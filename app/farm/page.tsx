@@ -1290,3 +1290,5 @@ const cowsData: CowListItem[] = [
 
 // Old upgradeItems - REMOVED as 'upgrades' array is now defined dynamically using COW_STATS.
 // const upgradeItems: UpgradeItem[] = [ ... ];
+
+</rewritten_file> 
