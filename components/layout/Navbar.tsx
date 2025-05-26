@@ -29,8 +29,8 @@ export default function Navbar() {
           </a>
         </Link>
         <div className="flex items-center space-x-1 sm:space-x-2 md:space-x-4">
-          <Link href="/" legacyBehavior passHref>
-            <a className={`flex items-center px-2 py-1 sm:px-3 sm:py-2 rounded-md text-sm sm:text-base font-medium transition-colors duration-200 hover:text-lime-300 ${pathname === '/' ? 'text-lime-400 border-b-2 border-lime-400' : 'text-gray-300'}`}>
+          <Link href="/landing" legacyBehavior passHref>
+            <a className={`flex items-center px-2 py-1 sm:px-3 sm:py-2 rounded-md text-sm sm:text-base font-medium transition-colors duration-200 hover:text-lime-300 ${pathname === '/landing' ? 'text-lime-400 border-b-2 border-lime-400' : 'text-gray-300'}`}>
               <Info className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" />Info
             </a>
           </Link>
