@@ -814,13 +814,13 @@ export default function NilkFarm3D() {
       name: "Yield Booster",
       cost: (() => {
         let calculatedCost = 12000;
-        const tempYieldBoosterLevel = yieldBoosterLevelFromStore; // Use actual store value
+        const tempYieldBoosterLevel = yieldBoosterLevel; // Use actual store value
         if (tempYieldBoosterLevel > 0) {
           calculatedCost = 12000 * Math.pow(1.4, tempYieldBoosterLevel);
         }
         return Math.floor(calculatedCost);
       })(),
-      description: `Boost all cows' Raw Nilk production by 10% per level (compounding). Current Lvl: ${yieldBoosterLevelFromStore}`,
+      description: `Boost all cows' Raw Nilk production by 10% per level (compounding). Current Lvl: ${yieldBoosterLevel}`,
       image: "/gallonjug.png",
       id: "yield_booster_legacy",
       category: 'boosters'
@@ -1592,7 +1592,7 @@ export default function NilkFarm3D() {
                   <div className="bg-gray-800/50 rounded-lg p-2 border border-gray-600/30">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-white">Yield Booster</span>
-                      <span className="text-lime-400 font-bold text-xs">Lvl {yieldBoosterLevelFromStore}</span>
+                      <span className="text-lime-400 font-bold text-xs">Lvl {yieldBoosterLevel}</span>
                     </div>
                   </div>
                   
