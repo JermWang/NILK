@@ -5,8 +5,8 @@ import "@rainbow-me/rainbowkit/styles.css";
 import { getDefaultConfig, RainbowKitProvider, darkTheme } from "@rainbow-me/rainbowkit";
 import { WagmiProvider } from "wagmi";
 import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
-import { mainnet, sepolia } from 'wagmi/chains'; // Re-adding import for Ethereum chains
-// import { mainnet, sepolia } from 'wagmi/chains'; // Temporarily commented out
+import { mainnet } from 'wagmi/chains';
+import { AuthProvider } from './context/AuthContext';
 
 // Define custom chains
 const hyperliquidMainnet = {
@@ -20,6 +20,7 @@ const hyperliquidMainnet = {
   blockExplorers: {
     default: { name: "Hyperliquid Explorer", url: "https://explorer.hyperliquid.xyz" }, // Assuming an explorer exists, replace if not
   },
+  iconUrl: "/hyperliquid.png",
   testnet: false,
 } as const;
 
@@ -34,27 +35,19 @@ const hyperliquidTestnet = {
   blockExplorers: {
     default: { name: "Hyperliquid Testnet Explorer", url: "https://testnet-explorer.hyperliquid.xyz" }, // Assuming an explorer exists, replace if not
   },
+  iconUrl: "/hyperliquid.png",
   testnet: true,
 } as const;
 
-// Use the config directly from getDefaultConfig
+const queryClient = new QueryClient();
 const config = getDefaultConfig({
-  appName: "GOT NILK?", // Corrected appName here
-  projectId: "YOUR_PROJECT_ID", // Replace with your WalletConnect Project ID
-  chains: [hyperliquidMainnet, hyperliquidTestnet, mainnet, sepolia], // Re-adding mainnet and sepolia
+  appName: "GOT NILK?",
+  projectId: process.env.NEXT_PUBLIC_PROJECT_ID!,
+  chains: [hyperliquidMainnet, hyperliquidTestnet, mainnet],
   ssr: true, // Important for Next.js
 });
 
-const queryClient = new QueryClient();
-
 export function Providers({ children }: { children: React.ReactNode }) {
-  const [mounted, setMounted] = React.useState(false);
-  React.useEffect(() => setMounted(true), []);
-
-  if (!mounted) {
-    return null; // Prevent rendering on the server or before mount
-  }
-
   return (
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
@@ -71,7 +64,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
             learnMoreUrl: "https://hyperliquid.xyz/"
           }}
         >
-          {children}
+          <AuthProvider>
+            {children}
+          </AuthProvider>
         </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>

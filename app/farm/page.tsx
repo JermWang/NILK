@@ -1,14 +1,15 @@
 "use client"
 
-import React, { useState, useRef, useEffect, Suspense } from "react"
+import React, { useState, useRef, useEffect, Suspense, useMemo } from "react"
 import Link from "next/link"
 import { usePathname } from 'next/navigation'
 import { Canvas, useFrame, RootState } from "@react-three/fiber"
-import { OrbitControls, Environment, Text, useGLTF, useTexture } from "@react-three/drei"
+import { OrbitControls, Environment, Text, useGLTF, useTexture, Stars } from "@react-three/drei"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useAccount, useBalance } from 'wagmi'
 import { Button } from "@/components/ui/button"
+import { supabase } from '@/lib/supabaseClient';
 import {
   ChevronLeft,
   ChevronRight,
@@ -28,39 +29,89 @@ import {
   CheckCircle2,
   Combine,
   Home,
-  ShoppingCart
+  ShoppingCart,
+  TrendingUp,
+  Coins,
+  Droplets
 } from "lucide-react"
 import * as THREE from "three"
 import { RepeatWrapping } from "three"
-import useGameStore, { useGameActions, COW_STATS } from "../store/useGameStore"
+import useGameStore, { useGameActions, COW_STATS, FLASK_STATS, ActiveFlask, FlaskId } from "../store/useGameStore"
+import { useErrorHandler, validators, antiCheat } from "../utils/errorHandling"
+
 import type { GameActions, Cow as StoreCow, CowTier } from "../store/useGameStore"
 import Image from 'next/image'
-
-// Define UpgradeItem interface earlier
-interface UpgradeItem {
-  name: string;
-  cost: number; 
-  description: string;
-  image: string;
-  id: string;
-  tier?: CowTier;
-  currency?: '$NILK' | 'Raw Nilk'; // Added currency type
-}
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { initialMarketItems, type UpgradeItem } from "@/app/config/marketItems"
+import Marketplace from "./components/Marketplace"
+import FlaskManager from "./components/FlaskManager"
 
 // GLTF Model paths - These become fallbacks or defaults if not specified by tier
-const DEFAULT_COW_MODEL_PATH = "/MODELS/COW.glb";
-const MACHINE_PRO_MODEL_PATH = "/MODELS/nilk machine PRO.glb"
-const MACHINE_MODEL_PATH = "/MODELS/nilk machine.glb"
+const DEFAULT_COW_MODEL_PATH = "/MODELS/COW_optimized.glb";
+const MACHINE_PRO_MODEL_PATH = "/MODELS/nilk machine PRO_optimized.glb"
+const MACHINE_MODEL_PATH = "/MODELS/nilk machine_optimized.glb"
 const GRASS_COLOR_TEXTURE_PATH = "/textures/grass/Grass008_1K-JPG_Color.jpg"
 const GRASS_NORMAL_TEXTURE_PATH = "/textures/grass/Grass008_1K-JPG_NormalGL.jpg"
 const GRASS_ROUGHNESS_TEXTURE_PATH = "/textures/grass/Grass008_1K-JPG_Roughness.jpg"
 const GRASS_AO_TEXTURE_PATH = "/textures/grass/Grass008_1K-JPG_AmbientOcclusion.jpg"
 
+// Scene constants
+const SCENE_GROUND_Y = 0;
+
+// Helper function to dispose of materials and geometries in a cloned scene
+function disposeClonedScene(scene: THREE.Object3D) {
+  if (!scene) return;
+  scene.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (mesh.isMesh) {
+      if (mesh.geometry) {
+        mesh.geometry.dispose();
+      }
+      if (mesh.material) {
+        if (Array.isArray(mesh.material)) {
+          mesh.material.forEach(material => {
+            // Dispose textures if they exist
+            Object.values(material).forEach((value: any) => {
+              if (value && typeof value.dispose === 'function' && value.isTexture) {
+                value.dispose();
+              }
+            });
+            material.dispose();
+          });
+        } else {
+          // Dispose textures if they exist
+          Object.values(mesh.material).forEach((value: any) => {
+            if (value && typeof value.dispose === 'function' && value.isTexture) {
+              value.dispose();
+            }
+          });
+          mesh.material.dispose();
+        }
+      }
+    }
+  });
+}
+
+// Define UpgradeItem interface earlier
+interface BulkDeal {
+  quantity: number;
+  totalPrice: number;
+  discountDisplayName?: string; // e.g., "10% Off!", "Save 500 $NILK"
+}
+
 // Generic GLTF Model Loader Component
 function LoadedGLTFModel({ modelPath, ...props }: { modelPath: string;[key: string]: any }) {
   const group = useRef<THREE.Group>(null);
   const { scene } = useGLTF(modelPath);
-  const clonedScene = scene.clone(); 
+  const clonedScene = useMemo(() => scene.clone(), [scene]);
+
+  useEffect(() => {
+    return () => {
+      if (clonedScene) {
+        disposeClonedScene(clonedScene as unknown as THREE.Object3D);
+      }
+    };
+  }, [clonedScene]);
 
   // Optional: Add a simple animation or effect if needed
   // useFrame((state) => {
@@ -93,7 +144,7 @@ function RealCow({
 }) {
   const group = useRef<THREE.Group>(null!);
   const { scene } = useGLTF(modelPath || DEFAULT_COW_MODEL_PATH);
-  const clonedScene = scene.clone();
+  const clonedScene = useMemo(() => scene.clone(), [scene]);
 
   const randomAnimOffset = useRef(Math.random() * Math.PI * 2);
   
@@ -185,6 +236,14 @@ function RealCow({
     group.current.position.add(forward.multiplyScalar(currentForwardSpeed));
 
   });
+
+  useEffect(() => {
+    return () => {
+      if (clonedScene) {
+        disposeClonedScene(clonedScene as unknown as THREE.Object3D);
+      }
+    };
+  }, [clonedScene]);
 
   return (
     <group ref={group} position={initialPosition} rotation={initialRotation} scale={scale}>
@@ -328,7 +387,6 @@ interface Cow3DData {
   scale: number;
 }
 
-const SCENE_GROUND_Y = -0.5;
 const COW_SCALE_MULTIPLIER = 6; // Default multiplier
 
 // Predefined spawn points for new cows - ADJUSTED TO AVOID SCENERY
@@ -376,6 +434,25 @@ function FarmScene({ cowList, farmBoundary }: { cowList: CowListItem[]; farmBoun
   const halfNewSide = (originalSideLength * Math.sqrt(3 / 4)) / 2;
   const fenceHeight = 1.0; 
   const groundThickness = 0.5; // Added ground thickness
+
+  // Define fixed plots for farm items
+  const itemPlots = {
+    machine: {
+      position: [6, groundY + (0.5 * 3.5), newMachineZ] as [number, number, number],
+      rotation: [0, Math.PI / 2, 0] as [number, number, number],
+      scale: 3.5,
+    },
+    farmer: {
+      position: [-6, groundY, newMachineZ - 2] as [number, number, number],
+      rotation: [0, Math.PI / 4, 0] as [number, number, number],
+      scale: 1.5,
+    },
+  };
+
+  const ownedMachines = useGameStore(state => state.ownedMachines);
+  const hasAlienFarmerBoost = useGameStore(state => state.hasAlienFarmerBoost);
+
+  const machineToRender = ownedMachines.pro > 0 ? 'pro' : ownedMachines.standard > 0 ? 'standard' : null;
 
   return (
     <>
@@ -438,18 +515,29 @@ function FarmScene({ cowList, farmBoundary }: { cowList: CowListItem[]; farmBoun
           )
         ))}
         
+        {/* Render machine based on ownership */}
         <LoadedGLTFModel 
-          modelPath={MACHINE_PRO_MODEL_PATH} 
-          position={[-4, groundY + (0.5 * 4), newMachineZ]} 
-          scale={4} 
-          rotation={[0, Math.PI / 2, 0]} 
-        />
+          modelPath={
+            ownedMachines.pro > 0 
+              ? MACHINE_PRO_MODEL_PATH 
+              : ownedMachines.standard > 0 
+                ? MACHINE_MODEL_PATH 
+                : MACHINE_MODEL_PATH
+          } 
+            position={itemPlots.machine.position}
+          scale={ownedMachines.pro > 0 ? 4 : 3.5}
+            rotation={itemPlots.machine.rotation}
+          />
+
+        {/* Render Alien Farmer based on ownership */}
+        {hasAlienFarmerBoost && (
         <LoadedGLTFModel 
-          modelPath={MACHINE_MODEL_PATH} 
-          position={[4, groundY + (0.5 * 3.5), newMachineZ]} 
-          scale={3.5} 
-          rotation={[0, Math.PI / 2, 0]} 
-        />
+            modelPath="/MODELS/farmer_optimized.glb"
+            position={itemPlots.farmer.position}
+            scale={itemPlots.farmer.scale}
+            rotation={itemPlots.farmer.rotation}
+          />
+        )}
 
         <Rock position={[-5, groundY, 5]} scale={1.5} />
         <Rock position={[-7, groundY, -2]} scale={1.2} rotation={[0, 0.5, 0]} />
@@ -495,6 +583,51 @@ const playSound = (soundFile: string) => {
   }
 };
 
+// Enhanced sparkle effect function (ported from processing page)
+const triggerSparkleEffect = (targetElement?: HTMLElement, sparkleContainer?: HTMLDivElement) => {
+  if (!sparkleContainer) return;
+
+  let originX = 0.5;
+  let originY = 0.5;
+
+  if (targetElement && sparkleContainer) {
+    const targetRect = targetElement.getBoundingClientRect();
+    const containerRect = sparkleContainer.getBoundingClientRect();
+    originX = (targetRect.left + targetRect.width / 2 - containerRect.left) / containerRect.width;
+    originY = (targetRect.top + targetRect.height / 2 - containerRect.top) / containerRect.height;
+  }
+  
+  const numParticles = 25 + Math.floor(Math.random() * 15); // 25-40 particles for more impact
+  for (let i = 0; i < numParticles; i++) {
+    const particle = document.createElement("span");
+    particle.classList.add("sparkle-particle-farm");
+    particle.style.setProperty("--tx", `${originX * 100}%`);
+    particle.style.setProperty("--ty", `${originY * 100}%`);
+    
+    const angle = Math.random() * 360;
+    const distance = Math.random() * 80 + 30; // Larger burst radius
+    particle.style.setProperty("--dx", `${Math.cos(angle * Math.PI / 180) * distance}px`);
+    particle.style.setProperty("--dy", `${Math.sin(angle * Math.PI / 180) * distance}px`);
+    particle.style.setProperty("--duration", `${0.6 + Math.random() * 0.8}s`); // Longer duration
+    particle.style.setProperty("--delay", `${Math.random() * 0.3}s`);
+    particle.style.setProperty("--size", `${4 + Math.random() * 8}px`); // Varied sizes
+    
+    // Enhanced color palette for different actions
+    const colors = [
+      `hsl(${100 + Math.random()*60}, 100%, 70%)`, // Green-yellow range
+      `hsl(${45 + Math.random()*30}, 100%, 75%)`,  // Gold range
+      `hsl(${280 + Math.random()*40}, 100%, 80%)`, // Purple range
+      `hsl(${180 + Math.random()*40}, 100%, 70%)`, // Cyan range
+    ];
+    particle.style.setProperty("--color", colors[Math.floor(Math.random() * colors.length)]);
+
+    sparkleContainer.appendChild(particle);
+    setTimeout(() => {
+      particle.remove();
+    }, 1500); // Longer cleanup time
+  }
+};
+
 const MAX_COW_LEVEL = 10;
 
 interface GameStateFromStore {
@@ -504,32 +637,37 @@ interface GameStateFromStore {
 }
 
 export default function NilkFarm3D() {
-  const { isConnected, address } = useAccount()
-  const { data: nativeBalance } = useBalance({ address })
-  const pathname = usePathname()
+  const { address, isConnected, isConnecting } = useAccount();
+  const [isClient, setIsClient] = useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [dialogContent, setDialogContent] = useState({ title: "", description: "", onConfirm: () => {} });
+  const [selectedUpgrade, setSelectedUpgrade] = useState<UpgradeItem | null>(null);
+  const [paymentCurrency, setPaymentCurrency] = useState<'$NILK' | 'Raw Nilk'>('$NILK');
 
-  const userNilkBalance = useGameStore((state) => state.userNilkBalance)
-  const userRawNilkBalance = useGameStore((state) => state.userRawNilkBalance)
-  const ownedCowsFromStore = useGameStore((state) => state.ownedCows)
-  const yieldBoosterLevelFromStore = useGameStore((state) => state.yieldBoosterLevel)
-  const gameActions = useGameActions() as GameActions;
+  const [isLoading, setIsLoading] = useState<Record<string, boolean>>({});
 
-  const [displayCowList, setDisplayCowList] = useState<CowListItem[]>([])
-  const [nextSpawnPointIndex, setNextSpawnPointIndex] = useState(0)
+  const [fusionCowOne, setFusionCowOne] = useState<string | null>(null);
+  const [fusionCowTwo, setFusionCowTwo] = useState<string | null>(null);
 
-  const [isMarketModalOpen, setIsMarketModalOpen] = useState(false)
-  const [isMainMarketModalOpen, setIsMainMarketModalOpen] = useState(false)
-  const [selectedUpgrade, setSelectedUpgrade] = useState<UpgradeItem | null>(null)
-  
-  const [isCowFusionModalOpen, setIsCowFusionModalOpen] = useState(false)
-  const [selectedCowsForFusion, setSelectedCowsForFusion] = useState<string[]>([])
+  // Zustand state selectors
+  const { 
+    userNilkBalance, 
+    userRawNilkBalance, 
+    ownedCows, 
+    hasFlaskBlueprint, 
+    activeFlask,
+    flaskInventory
+  } = useGameStore(state => ({
+    userNilkBalance: state.userNilkBalance,
+    userRawNilkBalance: state.userRawNilkBalance,
+    ownedCows: state.ownedCows,
+    hasFlaskBlueprint: state.hasFlaskBlueprint,
+    activeFlask: state.activeFlask,
+    flaskInventory: state.flaskInventory,
+  }), shallow);
 
-  const sparkleContainerRef = useRef<HTMLDivElement>(null)
-  const [showSparkleEffect, setShowSparkleEffect] = useState(false)
-  const [clickPosition, setClickPosition] = useState<{ x: number; y: number } | null>(null)
-
-  const [isLoadingNilkBalance, setIsLoadingNilkBalance] = useState(true)
-  const [isLoadingRawNilkBalance, setIsLoadingRawNilkBalance] = useState(true)
+  const actions = useGameActions();
+  const { handleError, renderError } = useErrorHandler();
 
   useEffect(() => {
     if (userNilkBalance !== undefined && userNilkBalance !== null) {
@@ -543,7 +681,7 @@ export default function NilkFarm3D() {
   useEffect(() => {
     let updatedNextSpawnIndex = nextSpawnPointIndex;
 
-    const newDisplayCows = ownedCowsFromStore.map((storeCow) => {
+    const newDisplayCows = ownedCows.map((storeCow) => {
       const existingDisplayCow = displayCowList.find(dc => dc.id === storeCow.id);
       let threeDData = existingDisplayCow?.threeD;
 
@@ -576,10 +714,10 @@ export default function NilkFarm3D() {
     if (updatedNextSpawnIndex !== nextSpawnPointIndex) {
         setNextSpawnPointIndex(updatedNextSpawnIndex);
     }
-  }, [ownedCowsFromStore, nextSpawnPointIndex]);
+  }, [ownedCows]); // Removed nextSpawnPointIndex from dependencies to prevent infinite loop
 
   const getHarvestStatus = (cow: CowListItem) => {
-    const storeCow = ownedCowsFromStore.find(sc => sc.id === cow.id);
+    const storeCow = ownedCows.find(sc => sc.id === cow.id);
     if (!storeCow) return { canHarvest: false, timeRemaining: "Error", rawNilkToClaim: 0 };
 
     const cooldownMilliseconds = cow.harvestCooldownHours * 60 * 60 * 1000;
@@ -597,78 +735,100 @@ export default function NilkFarm3D() {
     return { canHarvest, timeRemaining, rawNilkToClaim };
   };
 
-  const handleHarvest = (cowId?: string) => {
-    if (!isConnected) { console.log("Please connect wallet"); return; }
-    if (cowId) {
-      console.log(`[UI Harvest Intent] Harvest cow: ${cowId}`);
-      gameActions.harvestRawNilkFromCow(cowId);
-    } else {
-      console.log(`[UI Harvest Intent] Harvest all cows`);
-      gameActions.harvestAllRawNilk();
+  const handleHarvest = (cowId?: string, targetElement?: HTMLElement) => {
+    try {
+      if (!isConnected) { 
+        throw new Error("Please connect your wallet to harvest");
+      }
+      
+      if (cowId) {
+        // Validate harvest for specific cow
+        const cow = ownedCows.find(c => c.id === cowId);
+        if (cow) {
+          antiCheat.validateHarvest(cow.lastHarvestTime, 24 * 60 * 60 * 1000); // 24 hour cooldown
+        }
+        console.log(`[UI Harvest Intent] Harvest cow: ${cowId}`);
+        actions.harvestRawNilkFromCow(cowId);
+      } else {
+        console.log(`[UI Harvest Intent] Harvest all cows`);
+        actions.harvestAllRawNilk();
+      }
+      playSound("/sounds/sparkles.mp3"); // Play sparkles for any harvest action
+      
+      // Trigger enhanced sparkle effect
+      if (sparkleContainerRef.current) {
+        triggerSparkleEffect(targetElement, sparkleContainerRef.current);
+      }
+    } catch (error) {
+      handleError(error instanceof Error ? error : new Error('Harvest failed'), {
+        action: 'harvest',
+        cowId,
+        userId: address,
+      });
     }
-    playSound("/sounds/sparkles.mp3"); // Play sparkles for any harvest action
   };
 
+  // This is the OLD list of upgrades for the OLD modal flow.
+  // Adding category to satisfy UpgradeItem interface.
   const upgrades: UpgradeItem[] = [
     {
       name: COW_STATS.common.name,
       cost: COW_STATS.common.directPurchaseCost,
       description: `Acquire a foundational ${COW_STATS.common.name}. Produces ${COW_STATS.common.rawNilkPerDayBase} Raw Nilk/day (base).`,
       image: COW_STATS.common.imageUrl || "/NILK COW.png",
-      id: "buy_cow_common",
-      tier: 'common'
+      id: "buy_cow_common_legacy", // Changed ID to avoid clash if it ever bought cows
+      tier: 'common',
+      category: 'cows' // Or 'legacy_upgrades' if you prefer to distinguish
     },
     {
       name: COW_STATS.cosmic.name,
       cost: COW_STATS.cosmic.directPurchaseCost,
       description: `Purchase a ${COW_STATS.cosmic.name} directly. Produces ${COW_STATS.cosmic.rawNilkPerDayBase} Raw Nilk/day (base).`,
       image: COW_STATS.cosmic.imageUrl || "/cosmic cow.png",
-      id: "buy_cow_cosmic",
-      tier: 'cosmic'
+      id: "buy_cow_cosmic_legacy",
+      tier: 'cosmic',
+      category: 'cows' 
     },
     {
       name: COW_STATS.galactic_moo_moo.name,
       cost: COW_STATS.galactic_moo_moo.directPurchaseCost,
       description: `Instantly add a top-tier ${COW_STATS.galactic_moo_moo.name}. Produces ${COW_STATS.galactic_moo_moo.rawNilkPerDayBase} Raw Nilk/day (base).`,
       image: COW_STATS.galactic_moo_moo.imageUrl || "/galactic moo moo.png",
-      id: "buy_cow_galactic_moo_moo",
-      tier: 'galactic_moo_moo'
+      id: "buy_cow_galactic_moo_moo_legacy",
+      tier: 'galactic_moo_moo',
+      category: 'cows' 
     },
     {
       name: "Yield Booster",
       cost: (() => {
         let calculatedCost = 12000;
-        if (yieldBoosterLevelFromStore > 0) {
-          calculatedCost = 12000 * Math.pow(1.4, yieldBoosterLevelFromStore);
+        const tempYieldBoosterLevel = yieldBoosterLevelFromStore; // Use actual store value
+        if (tempYieldBoosterLevel > 0) {
+          calculatedCost = 12000 * Math.pow(1.4, tempYieldBoosterLevel);
         }
         return Math.floor(calculatedCost);
       })(),
-      description: `Boost all cows' Raw Nilk production by 10% per level (compounding). Current Lvl: ${yieldBoosterLevelFromStore}.`,
+      description: `Boost all cows' Raw Nilk production by 10% per level (compounding). Current Lvl: ${yieldBoosterLevelFromStore}`,
       image: "/gallonjug.png",
-      id: "yield_booster"
+      id: "yield_booster_legacy",
+      category: 'boosters'
     },
     {
       name: "Cow Evolution",
-      cost: 0,
-      description: `Evolve a cow for a 15% (compounding) Raw Nilk yield increase per level. Cost varies by tier and current level.`,
+      cost: 0, 
+      description: `Evolve a cow for a 15% (compounding) Raw Nilk yield increase per level. Cost varies. Select a cow first.`,
       image: "/nilk machine PRO.png", 
-      id: "cow_evolution"
+      id: "cow_evolution_legacy",
+      category: 'boosters'
     },
     {
-      name: "Manual Nilk Processor",
-      cost: 500, // Example cost, can be adjusted
-      currency: 'Raw Nilk',
-      description: "A basic machine to process Raw Nilk into $NILK. Essential for converting your raw resources.",
-      image: "/manual processing.png",
-      id: "manual_processor"
-    },
-    {
-      name: "MOOFI Supporter Badge",
+      name: "MOOFI Badge", // Updated Name
       cost: 1000000,
       currency: '$NILK',
-      description: "Show your elite support! Grants a permanent 5% boost to all Raw Nilk to $NILK conversion efficiency.",
+      description: "A prestigious badge. Permanently boosts final $NILK yield from processing by 10%.", // Updated Description
       image: "/MOOFI badge.png",
-      id: "moofi_badge"
+      id: "moofi_badge_legacy", // Kept legacy ID for this modal, actual purchase uses store ID
+      category: 'boosters'
     },
   ];
 
@@ -683,140 +843,48 @@ export default function NilkFarm3D() {
     }
   ]
 
-  const handleInitiatePurchase = (upgradeId: string) => {
-    const upgradeToPurchase = upgrades.find(u => u.id === upgradeId);
-    if (!isConnected) { console.log("Please connect wallet"); return; }
-    if (!upgradeToPurchase) { console.log("Upgrade not found"); return; }
-
-    if (upgradeId === "cow_evolution") {
-      const evolvableCow = displayCowList.find(cow => cow.level < MAX_COW_LEVEL);
-      if (!evolvableCow) {
-        console.log("[Purchase] No cows eligible for evolution.");
-        return;
-      }
-    }
-    setSelectedUpgrade(upgradeToPurchase);
-    setIsMarketModalOpen(true);
-  };
-
-  const handleConfirmPurchase = (
-    upgrade: UpgradeItem | null, 
+  // Renamed from handleConfirmPurchase to avoid conflict with new market purchase flow
+  const handleConfirmLegacyUpgradePurchase = (
+    passedUpgrade: UpgradeItem | null, 
     paymentCurrency: '$NILK' | 'Raw Nilk', 
     event?: React.MouseEvent<HTMLButtonElement>
   ) => {
-    if (!upgrade || !isConnected) {
-      console.log("[Purchase UI] Upgrade not selected or wallet not connected.");
-        return;
-    }
-
-    console.log(`[Purchase UI Intent] User wants to purchase: ${upgrade.name} with ${paymentCurrency}.`);
-
-    let estimatedCostForModalBehavior = 0;
-    let targetCowForEvolution: CowListItem | undefined = undefined;
-    let actionTaken = false; // To track if a game action was attempted
-    let paymentCurrencyForModal: '$NILK' | 'Raw Nilk' = paymentCurrency;
-
-    if (upgrade.id === "cow_evolution") {
-      targetCowForEvolution = displayCowList.find(cow => cow.level < MAX_COW_LEVEL);
-      if (targetCowForEvolution) {
-        const cowStat = COW_STATS[targetCowForEvolution.tier];
-        if (cowStat) {
-          estimatedCostForModalBehavior = cowStat.evolutionBaseCost + (targetCowForEvolution.level * cowStat.evolutionLevelMultiplier);
-          // Placeholder for actual call in Phase 2 logic
-          // gameActions.evolveCow(targetCowForEvolution.id);
-          // actionTaken = true; // Mark that an action would be taken
-          console.log(`[Purchase UI] Placeholder: Evolve cow ${targetCowForEvolution.id}`);
-            } else {
-          console.warn(`[Purchase UI] COW_STATS not found for tier: ${targetCowForEvolution.tier}`);
-        }
-      } else {
-        console.log("[Purchase UI] No cows eligible for evolution.");
+    if (!passedUpgrade) return;
+    
+    try {
+      if (!isConnected) {
+        throw new Error("Please connect your wallet to make purchases");
       }
-    } else if (upgrade.tier && COW_STATS[upgrade.tier]) { // This is a cow purchase
-      estimatedCostForModalBehavior = COW_STATS[upgrade.tier].directPurchaseCost;
-      if (paymentCurrencyForModal === "$NILK" && userNilkBalance >= estimatedCostForModalBehavior) {
-        // Directly call the purchaseCow action from the store
-        const purchaseSuccess = gameActions.purchaseCow(upgrade.tier);
-        actionTaken = true;
-        if (purchaseSuccess) {
-          console.log(`[Purchase UI] gameActions.purchaseCow(${upgrade.tier}) called and succeeded.`);
-          playSound("/sounds/success.mp3"); // Play success sound on successful cow purchase
-        } else {
-          console.log(`[Purchase UI] gameActions.purchaseCow(${upgrade.tier}) called but failed (e.g., insufficient funds in store).`);
-           // If store action failed (e.g. due to its own balance check), reflect this
-           // For now, modal closing logic below will handle insufficient balance based on UI estimate.
-        }
-      } else if (paymentCurrencyForModal === "$NILK") {
-        console.log("[Purchase UI] Insufficient $NILK based on UI estimate before calling store action.");
-      }
-    } else if (upgrade.id === "yield_booster") {
-        let calculatedCost = 12000;
-        if (yieldBoosterLevelFromStore > 0) {
-          calculatedCost = 12000 * Math.pow(1.4, yieldBoosterLevelFromStore);
-        }
-        estimatedCostForModalBehavior = Math.floor(calculatedCost);
-        // Placeholder: gameActions.upgradeYieldBooster(); when store action is called
-        if (paymentCurrencyForModal === "$NILK" && userNilkBalance >= estimatedCostForModalBehavior) {
-          // const success = gameActions.upgradeYieldBooster(); // UNCOMMENT WHEN STORE ACTION EXISTS
-          // if (success) { actionTaken = true; playSound("/sounds/success.mp3"); }
-        }
-        console.log("[Purchase UI] Placeholder: Upgrade yield booster");
-    } else if (upgrade.id === "manual_processor") {
-      estimatedCostForModalBehavior = upgrade.cost;
-      if (paymentCurrencyForModal === "Raw Nilk" && userRawNilkBalance >= estimatedCostForModalBehavior) {
-        const success = gameActions.purchaseManualProcessor(); // Assumes this action exists in store
-        if (success) { 
-          actionTaken = true; 
-          playSound("/sounds/success.mp3"); 
-          console.log("[Purchase UI] gameActions.purchaseManualProcessor() called and succeeded.");
-            } else {
-          console.log("[Purchase UI] gameActions.purchaseManualProcessor() called but failed (e.g., insufficient Raw Nilk in store).");
-        }
-      } else if (paymentCurrencyForModal === "Raw Nilk"){
-        console.log("[Purchase UI] Insufficient Raw Nilk based on UI estimate before calling store action for Manual Processor.");
-      }
-    } else if (upgrade.id === "moofi_badge") {
-      estimatedCostForModalBehavior = upgrade.cost;
-      if (paymentCurrencyForModal === "$NILK" && userNilkBalance >= estimatedCostForModalBehavior) {
-        const success = gameActions.purchaseMoofiBadge(); // Assumes this action exists in store
-        if (success) { 
-          actionTaken = true; 
-          playSound("/sounds/success.mp3"); 
-          console.log("[Purchase UI] gameActions.purchaseMoofiBadge() called and succeeded.");
-        } else {
-          console.log("[Purchase UI] gameActions.purchaseMoofiBadge() called but failed (e.g., insufficient $NILK in store).");
-        }
-      } else if (paymentCurrencyForModal === "$NILK"){
-        console.log("[Purchase UI] Insufficient $NILK based on UI estimate before calling store action for MOOFI Badge.");
-      }
-    } else {
-        // Fallback for items that might not fit the above categories, using their statically defined cost
-        estimatedCostForModalBehavior = upgrade.cost;
-    }
 
-    console.log(`[Purchase UI] Estimated cost for modal behavior: ${estimatedCostForModalBehavior} ${paymentCurrencyForModal}`);
+      // Validate purchase
+      const cost = passedUpgrade.cost || 0;
+      if (paymentCurrency === '$NILK' && userNilkBalance < cost) {
+        throw new Error("Insufficient NILK balance");
+      }
+      if (paymentCurrency === 'Raw Nilk' && userRawNilkBalance < cost) {
+        throw new Error("Insufficient Raw Nilk balance");
+      }
 
-    if (actionTaken || (event && sparkleContainerRef.current)) { // Show sparkle if an action was attempted or if it's just a UI click for other items
-          if (event && sparkleContainerRef.current) {
-            const rect = (event.target as HTMLElement).getBoundingClientRect();
-            const containerRect = sparkleContainerRef.current.getBoundingClientRect();
-            setClickPosition({
-              x: rect.left + rect.width / 2 - containerRect.left,
-              y: rect.top + rect.height / 2 - containerRect.top,
-            });
-            setShowSparkleEffect(true);
-            setTimeout(() => setShowSparkleEffect(false), 1000);
-          }
-    }
-
-    if (paymentCurrencyForModal === "$NILK" && userNilkBalance < estimatedCostForModalBehavior && estimatedCostForModalBehavior > 0 && !actionTaken) {
-      console.log("[Purchase UI] Insufficient $NILK (estimated), no store action attempted. Modal kept open.");
-    } else if (paymentCurrencyForModal === "Raw Nilk" && userRawNilkBalance < estimatedCostForModalBehavior && estimatedCostForModalBehavior > 0 && !actionTaken) {
-      console.log("[Purchase UI] Insufficient Raw Nilk (estimated), no store action attempted. Modal kept open.");
-    } else {
-        setIsMarketModalOpen(false); 
-        setSelectedUpgrade(null); 
-      console.log("[Purchase UI] Modal closed. Store state should reflect any actions taken.");
+      console.log(`[UI Purchase Intent] Legacy upgrade: ${passedUpgrade.name}, Cost: ${cost} ${paymentCurrency}`);
+      
+      if (passedUpgrade.id === "yield_booster_legacy") {
+        actions.upgradeYieldBooster();
+      } else if (passedUpgrade.id === "moofi_badge_legacy") {
+        actions.purchaseMoofiBadge();
+      } else if (passedUpgrade.id.startsWith("buy_cow_")) {
+        const tier = passedUpgrade.tier as CowTier;
+        actions.purchaseCow(tier);
+      }
+      
+      playSound("/sounds/sparkles.mp3");
+    } catch (error) {
+      handleError(error instanceof Error ? error : new Error('Purchase failed'), {
+        action: 'purchase',
+        item: passedUpgrade.name,
+        cost: passedUpgrade.cost,
+        currency: paymentCurrency,
+        userId: address,
+      });
     }
   };
 
@@ -858,428 +926,904 @@ export default function NilkFarm3D() {
     );
   }
 
+  // MODIFIED handleInitiateMarketPurchase: Always uses qty 1 and single item cost.
+  // Quantity selection is now handled in the confirmation modal.
+  const handleInitiateMarketPurchase = (item: UpgradeItem, quantity: number, unitPrice: number, currency: '$NILK' | 'Raw Nilk') => {
+    if (!isConnected) {
+        // Handle case where user is not connected
+      return;
+    }
+    setItemToPurchase(item);
+    // This now just opens the confirmation modal.
+    // The actual quantity logic will be inside that modal.
+    setIsConfirmingPurchase(true);
+  };
+
+  // handleConfirmMarketPurchase remains largely the same, but the `quantity` and `finalPrice` it receives 
+  // will come from the confirmation modal's state.
+  const handleConfirmMarketPurchase = (
+    item: UpgradeItem,
+    paymentCurrency: '$NILK' | 'Raw Nilk',
+    event: React.MouseEvent<HTMLButtonElement> | undefined, 
+    quantityToBuy: number, 
+    totalCalculatedPrice: number 
+  ) => {
+    console.log(`[UI Purchase Intent] Item: ${item.name}, Quantity: ${quantityToBuy}, Total: ${totalCalculatedPrice}, Currency: ${paymentCurrency}`);
+    
+    const success = actions.purchaseMarketItem(item.id, quantityToBuy);
+    if (success) {
+      console.log(`[UI Purchase Success] ${item.name} x${quantityToBuy} purchased successfully`);
+      playSound("/sounds/sparkles.mp3");
+      
+      // Trigger enhanced sparkle effect
+      if (sparkleContainerRef.current && event?.currentTarget) {
+        triggerSparkleEffect(event.currentTarget, sparkleContainerRef.current);
+      }
+    } else {
+      console.log(`[UI Purchase Failed] ${item.name} purchase failed`);
+    }
+    
+    setIsConfirmingPurchase(false);
+    setItemToPurchase(null);
+  };
+
+  // Helper function to get cow emoji based on rarity
+  const getCowEmoji = (rarity: string) => {
+    if (rarity === COW_STATS.cosmic.name) return "🌌";
+    if (rarity === COW_STATS.galactic_moo_moo.name) return "⭐";
+    if (rarity === COW_STATS.common.name) return "🐄";
+    return "🐮";
+  };
+
+  // Helper function to get rarity gradient
+  const getRarityGradient = (rarity: string) => {
+    if (rarity === COW_STATS.cosmic.name) return "from-purple-900/80 to-purple-700/80";
+    if (rarity === COW_STATS.galactic_moo_moo.name) return "from-blue-900/80 to-blue-700/80";
+    if (rarity === COW_STATS.common.name) return "from-green-900/80 to-green-700/80";
+    return "from-gray-900/80 to-gray-700/80";
+  };
+
+  // Helper function to get rarity border
+  const getRarityBorder = (rarity: string) => {
+    if (rarity === COW_STATS.cosmic.name) return "border-purple-400/60";
+    if (rarity === COW_STATS.galactic_moo_moo.name) return "border-blue-400/60";
+    if (rarity === COW_STATS.common.name) return "border-green-400/60";
+    return "border-gray-400/60";
+  };
+
+  const handleActivateFlask = async (flaskId: FlaskId) => {
+    setIsLoading(prev => ({ ...prev, [`activate_${flaskId}`]: true }));
+    try {
+        const success = await actions.activateFlask(flaskId);
+        if (success) {
+            // Optional: Show a success toast
+            console.log(`${flaskId} activated successfully!`);
+        } else {
+            handleError(new Error("Failed to activate flask. Another may be active or you may not have one."));
+        }
+    } catch (e: any) {
+        handleError(e);
+    } finally {
+        setIsLoading(prev => ({ ...prev, [`activate_${flaskId}`]: false }));
+    }
+  };
+
+  const farmBoundary = 30;
+  const cowList: CowListItem[] = useMemo(() => {
+    return ownedCows.map(cow => ({
+      id: cow.id,
+      name: cow.name,
+      image: cow.imageUrl || "/NILK COW.png",
+      rarity: cow.tier.charAt(0).toUpperCase() + cow.tier.slice(1),
+      level: cow.level,
+      tier: cow.tier,
+      rawNilkPerDay: cow.currentRawNilkPerDay,
+      lastHarvestTime: cow.lastHarvestTime,
+      harvestCooldownHours: 6,
+      modelPath: cow.tier === "common" ? DEFAULT_COW_MODEL_PATH : cow.tier === "cosmic" ? "/MODELS/cosmic cow.glb" : "/MODELS/galactic moo moo.glb",
+      threeD: {
+        position: [0, 0, 0],
+        rotation: [0, 0, 0],
+        scale: COW_SCALE_MULTIPLIER
+      }
+    }));
+  }, [ownedCows]);
+
   return (
-    <div className="min-h-screen text-white flex flex-col select-none relative overflow-hidden">
-      {/* Sparkle Container for purchase effects */}
-      <div ref={sparkleContainerRef} className="absolute inset-0 pointer-events-none z-[150]" >
-        {showSparkleEffect && clickPosition && (
-          <>
-            {Array.from({ length: 25 }).map((_, i) => (
-              <span
-                key={`sparkle-${i}`}
-                className="sparkle-particle-farm"
+    <div className="fixed inset-0 bg-gradient-to-br from-black via-green-900 to-black text-white overflow-hidden">
+      {/* Galaxy Background */}
+      <div className="absolute inset-0 z-0">
+        <div className="w-full h-full bg-gradient-to-br from-black via-purple-900/20 via-green-900/30 to-black">
+          {/* Animated stars background */}
+          <div className="absolute inset-0 overflow-hidden">
+            {Array.from({ length: 100 }).map((_, i) => (
+              <div
+                key={`star-${i}`}
+                className="absolute w-1 h-1 bg-white rounded-full animate-pulse"
                 style={{
-                  '--tx': `${clickPosition.x}px`,
-                  '--ty': `${clickPosition.y}px`,
-                  '--dx': `${Math.cos((i / 25) * Math.PI * 2) * (Math.random() * 50 + 30)}px`,
-                  '--dy': `${Math.sin((i / 25) * Math.PI * 2) * (Math.random() * 50 + 30)}px`,
-                  '--duration': `${0.6 + Math.random() * 0.4}s`,
-                  '--delay': `${Math.random() * 0.1}s`,
-                  '--size': `${6 + Math.random() * 6}px`,
-                  '--color': `hsl(${100 + Math.random() * 60}, 100%, 70%)`,
-                } as React.CSSProperties}
+                  left: `${Math.random() * 100}%`,
+                  top: `${Math.random() * 100}%`,
+                  animationDelay: `${Math.random() * 3}s`,
+                  animationDuration: `${2 + Math.random() * 3}s`,
+                  opacity: Math.random() * 0.8 + 0.2,
+                }}
               />
             ))}
-          </>
-        )}
+          </div>
+          
+
+        </div>
       </div>
 
-      {/* Main Content Area - MODIFIED PADDING HERE */}
-      <main className="flex-grow flex flex-col lg:flex-row items-stretch justify-center p-4 pt-40 sm:pt-32 pb-10 z-10 relative">
-        {/* Left Panel (3D Scene) */}
-        <div className="w-full lg:w-2/3 h-[50vh] lg:h-auto bg-black/30 border border-lime-800/50 rounded-xl shadow-xl shadow-lime-500/10 overflow-hidden relative lg:mr-4 mb-4 lg:mb-0">
-          <Suspense fallback={<div className="flex justify-center items-center h-full text-lime-400">Loading 3D Farm...</div>}>
-            <Canvas 
-              camera={{ position: [0, 10, 25], fov: 50 }} 
-              shadows 
-              className="cursor-grab active:cursor-grabbing"
-              gl={{
-                alpha: true, // Enable transparent background
-                powerPreference: "high-performance"
-              }}
-              onCreated={handleCanvasCreated}
-            >
-              {/* <color attach="background" args={['#101020']} /> */}{/* Ensure this is removed or commented */}
-              <FarmScene cowList={displayCowList} farmBoundary={farmBoundaryForScene} />
-              <OrbitControls maxDistance={50} minDistance={5} enablePan={true} target={[0, 1, 0]} />
-              {/* <Environment background blur={0.5} /> */}{/* Remove this to allow transparency */}
-              <directionalLight 
-                position={[10, 20, 5]}
-                intensity={1.2}
-                castShadow 
-                shadow-mapSize-width={2048}
-                shadow-mapSize-height={2048}
-              />
-              <ambientLight intensity={0.6} />
-            </Canvas>
-          </Suspense>
-        </div>
-
-        {/* Right Panel (UI Elements) */}
-        <div className="w-full lg:w-1/3 flex flex-col space-y-4">
-          {/* Account Info & Balances - Top Right */}
-          <div className="bg-black/60 border border-lime-500/50 rounded-xl shadow-xl p-4 space-y-3">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold text-lime-300">Farm Overview</h2>
-              {isConnected && address && (
-                <Badge variant="outline" className="border-green-400 text-green-300 text-xs">
-                  {`${address.substring(0, 6)}...${address.substring(address.length - 4)}`}
-                </Badge>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-black/30 p-3 rounded-md border border-lime-700/50">
-                <p className="text-xs text-lime-400">$NILK Balance</p>
-                <p className="text-lg font-bold text-lime-200">{userNilkBalance.toFixed(2)}</p>
-              </div>
-              <div className="bg-black/30 p-3 rounded-md border border-lime-700/50">
-                <p className="text-xs text-lime-400">Raw Nilk</p>
-                <p className="text-lg font-bold text-lime-200">{userRawNilkBalance.toFixed(2)}</p>
-              </div>
-            </div>
-            {nativeBalance && (
-              <div className="bg-black/30 p-3 rounded-md border border-lime-700/50">
-                <p className="text-xs text-lime-400">Native Token ({nativeBalance.symbol})</p>
-                <p className="text-lg font-bold text-lime-200">{parseFloat(nativeBalance.formatted).toFixed(4)}</p>
-              </div>
-            )}
-          </div>
-
-          {/* Your Herd Section - Middle Right */}
-          <div className="bg-black/60 border border-lime-500/50 rounded-xl shadow-xl p-4 flex-grow flex flex-col">
-            <div className="flex justify-between items-center mb-3">
-              <h2 className="text-xl font-semibold text-lime-300">Your Herd ({displayCowList.length})</h2>
-              <Button
-                onClick={() => handleHarvest()} 
-                variant="outline"
-                size="sm"
-                className="border-lime-500 bg-lime-600/20 hover:bg-lime-500/30 text-lime-200 hover:text-lime-100 text-xs"
-                disabled={displayCowList.every(cow => !getHarvestStatus(cow).canHarvest) || !isConnected}
-              >
-                <Sparkles size={14} className="mr-1.5 text-yellow-400" /> Harvest All Available
-              </Button>
-            </div>
-            <div className="overflow-y-auto space-y-3 pr-2 flex-grow max-h-[calc(100vh-700px)] min-h-[150px]">
-              {displayCowList.length > 0 ? displayCowList.map((cow) => {
-                const { canHarvest, timeRemaining, rawNilkToClaim } = getHarvestStatus(cow);
-                return (
-                  <div key={cow.id} className="bg-black/30 border border-lime-700/50 rounded-lg p-3 flex items-center justify-between space-x-3">
-                    <Avatar className="h-12 w-12 border-2 border-lime-600">
-                      <AvatarImage src={cow.image} alt={cow.name} />
-                      <AvatarFallback className="bg-lime-800 text-lime-300">{cow.name.substring(0,2)}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-grow">
-                      <div className="flex justify-between items-baseline">
-                        <p className="text-sm font-semibold text-lime-200">{cow.name} <span className="text-xs text-gray-400">(Lvl {cow.level})</span></p>
-                        <Badge variant="secondary" className={`text-xs px-1.5 py-0.5 ${rarityColor(cow.rarity)}`}>{cow.rarity}</Badge>
+      {/* UI Overlay Layer - Unified Station Layout */}
+      <div className="relative z-10 h-full flex flex-col">
+        
+        {/* Main Unified Station - Below navbar */}
+        <div className="pt-32 px-4 pb-4 flex-1 flex flex-col max-h-screen overflow-hidden">
+          
+          {/* Connected Three Panel Layout */}
+          <div className="flex flex-1 min-h-0 bg-black/70 backdrop-blur-md rounded-2xl border-2 border-lime-400/40 shadow-2xl overflow-hidden">
+            
+            {/* Left Panel: Farm Stats & Production */}
+            <div className="w-1/5 flex flex-col border-r border-lime-400/30">
+              
+              {/* Farm Control Center */}
+              <div className="flex-1 p-4 border-b border-lime-400/20">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-bold text-lime-400 flex items-center">
+                  <Tractor className="mr-2" size={18} />
+                  Farm Stats
+                </h2>
+                </div>
+                <div className="space-y-3">
+                  <div className="bg-gradient-to-r from-yellow-900/30 to-yellow-800/30 rounded-lg p-3 border border-yellow-400/40">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-12 h-12 relative">
+                        <Image 
+                          src="/nilk token.png" 
+                          alt="NILK Token" 
+                          fill 
+                          className="object-contain"
+                        />
                       </div>
-                      <p className="text-xs text-lime-400">Yield: {cow.rawNilkPerDay.toFixed(1)} Raw Nilk/day</p>
-                      {canHarvest ? (
-                        <p className="text-xs text-green-400">Ready! Claim: {rawNilkToClaim.toFixed(2)}</p>
-                      ) : (
-                        <p className="text-xs text-yellow-500">Cooldown: {timeRemaining}</p>
+                      <div className="flex-1">
+                        <p className="text-xs text-yellow-300 leading-tight">NILK Balance</p>
+                        <p className="font-bold text-yellow-400 text-lg leading-tight">${formatNumber(userNilkBalance)}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-gradient-to-r from-blue-900/30 to-blue-800/30 rounded-lg p-3 border border-blue-400/40">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-12 h-12 relative">
+                        <Image 
+                          src="/smalljar.png" 
+                          alt="Raw Nilk" 
+                          fill 
+                          className="object-contain"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-xs text-blue-300 leading-tight">Raw Nilk</p>
+                        <p className="font-bold text-blue-400 text-lg leading-tight">{formatNumber(userRawNilkBalance)}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-gradient-to-r from-purple-900/30 to-purple-800/30 rounded-lg p-3 border border-purple-400/40">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-12 h-12 relative">
+                        <Image 
+                          src="/hyperliquid.png" 
+                          alt="HYPE Token" 
+                          fill 
+                          className="object-contain"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-xs text-purple-300 leading-tight">HYPE Balance</p>
+                        <p className="font-bold text-purple-400 text-lg leading-tight">{formatNumber(userHypeBalance)}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Production Overview */}
+              <div className="flex-1 p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-md font-bold text-lime-400 flex items-center">
+                    <div className="w-6 h-6 relative mr-2">
+                      <Image 
+                        src="/gallonjug.png" 
+                        alt="Production" 
+                        fill 
+                        className="object-contain"
+                      />
+                    </div>
+                  Production
+                </h3>
+                  </div>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between bg-lime-900/20 rounded-lg p-2">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-6 h-6 relative">
+                        <Image 
+                          src="/smalljar.png" 
+                          alt="Daily Output" 
+                          fill 
+                          className="object-contain"
+                        />
+                      </div>
+                      <span className="text-xs text-lime-300">Daily</span>
+                    </div>
+                    <span className="text-lime-400 font-bold text-sm">{formatNumber(calculateTotalProduction(displayCowList))}</span>
+                  </div>
+                  <div className="flex items-center justify-between bg-yellow-900/20 rounded-lg p-2">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-6 h-6 relative">
+                        <Image 
+                          src="/NILK COW.png" 
+                          alt="Ready Cows" 
+                          fill 
+                          className="object-contain"
+                        />
+                      </div>
+                      <span className="text-xs text-yellow-300">Ready</span>
+                    </div>
+                    <span className="text-yellow-400 font-bold text-sm">{countReadyToHarvest(displayCowList, getHarvestStatus)}</span>
+                  </div>
+                  <div className="flex items-center justify-between bg-purple-900/20 rounded-lg p-2">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-6 h-6 relative">
+                        <Image 
+                          src="/nilk crate.png" 
+                          alt="Total Cows" 
+                          fill 
+                          className="object-contain"
+                        />
+                      </div>
+                      <span className="text-xs text-purple-300">Total</span>
+                    </div>
+                    <span className="text-purple-400 font-bold text-sm">{displayCowList.length}</span>
+                  </div>
+                  <div className="flex items-center justify-between bg-gray-900/20 rounded-lg p-2">
+                    <span className="text-xs text-gray-300">⚡ Efficiency</span>
+                    <span className="text-lime-400 font-bold text-sm">
+                      {displayCowList.length > 0 ? Math.round((countReadyToHarvest(displayCowList, getHarvestStatus) / displayCowList.length) * 100) : 0}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Center Panel: 3D Farm Scene */}
+            <div className="flex-1 flex flex-col relative">
+                {/* Scene Header */}
+              <div className="bg-gradient-to-b from-black/50 to-transparent p-4 border-b border-lime-400/20">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-bold text-lime-400 flex items-center">
+                      <Home className="mr-2" size={18} />
+                      NILK Farm
+                    </h2>
+                    <div className="flex items-center space-x-2 text-xs text-gray-300">
+                      <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                      <span>Live Farm View</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3D Scene Container */}
+              <div className="flex-1 relative">
+                  <Canvas
+                    shadows
+                    camera={{ position: [0, 10, 20], fov: 60 }}
+                    onCreated={handleCanvasCreated}
+                    className="w-full h-full"
+                  >
+                  <OrbitControls 
+                    enablePan={true}
+                    enableZoom={true}
+                    enableRotate={true}
+                    minDistance={5}
+                    maxDistance={50}
+                    maxPolarAngle={Math.PI / 2.2}
+                  />
+                    <ambientLight intensity={0.6} />
+                    <directionalLight 
+                      position={[5, 10, 7]} 
+                      intensity={1.5} 
+                      color="#ffedd5" 
+                      castShadow 
+                      shadow-mapSize-width={1024}
+                      shadow-mapSize-height={1024}
+                    />
+                    <Stars radius={100} depth={50} count={3000} factor={4} saturation={0} fade speed={1} />
+                    <Environment preset="sunset" blur={0.3}/>
+                    
+
+                    
+                    <Suspense fallback={null}>
+                      <FarmScene cowList={displayCowList} farmBoundary={farmBoundaryForScene} />
+                    </Suspense>
+                  </Canvas>
+
+                {/* Scene Controls Overlay */}
+                <div className="absolute bottom-3 right-3">
+                  <div className="bg-black/60 backdrop-blur-sm rounded-lg p-2 border border-lime-400/20">
+                    <div className="flex items-center space-x-2 text-xs text-gray-300">
+                      <span>🖱️ Drag to rotate</span>
+                      <span>•</span>
+                      <span>🔍 Scroll to zoom</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Panel: Actions & Processing */}
+            <div className="w-1/4 flex flex-col border-l border-lime-400/30">
+              
+              {/* Quick Actions */}
+              <div className="flex-1 p-4 border-b border-lime-400/20">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-md font-bold text-lime-400 flex items-center">
+                  <Zap className="mr-2" size={16} />
+                  Quick Actions
+                </h3>
+                </div>
+                <div className="grid gap-3">
+                  <Button
+                    onClick={(e) => {
+                      setIsMarketModalOpen(true);
+                      playSound("/sounds/sparkles.mp3");
+                      if (sparkleContainerRef.current) {
+                        triggerSparkleEffect(e.currentTarget, sparkleContainerRef.current);
+                      }
+                    }}
+                    className="w-full bg-gradient-to-r from-lime-500/90 to-green-500/90 hover:from-lime-400 hover:to-green-400 text-black font-semibold py-2.5 px-4 rounded-lg shadow-lg hover:shadow-lime-400/30 transition-all duration-300 border border-lime-400/20 hover:border-lime-400/60 backdrop-blur-sm text-sm flex items-center justify-center group"
+                  >
+                    <div className="w-4 h-4 relative mr-2 group-hover:scale-110 transition-transform duration-300">
+                      <Image 
+                        src="/nilk crate.png" 
+                        alt="Market" 
+                        fill 
+                        className="object-contain"
+                      />
+                    </div>
+                    Market
+                  </Button>
+                  
+                  <Link href="/liquidity">
+                    <Button
+                      className="w-full bg-gradient-to-r from-purple-500/90 to-pink-500/90 hover:from-purple-400 hover:to-pink-400 text-white font-semibold py-2.5 px-4 rounded-lg shadow-lg hover:shadow-purple-400/30 transition-all duration-300 border border-purple-400/20 hover:border-purple-400/60 backdrop-blur-sm text-sm flex items-center justify-center group"
+                    >
+                      <div className="w-4 h-4 relative mr-2 group-hover:scale-110 transition-transform duration-300">
+                        <Image 
+                          src="/hyperliquid.png" 
+                          alt="Liquidity" 
+                          fill 
+                          className="object-contain"
+                        />
+                      </div>
+                      NILK/HYPE Pool
+                    </Button>
+                  </Link>
+                  
+                  <Button
+                    onClick={(e) => {
+                      setIsCowFusionModalOpen(true);
+                      playSound("/sounds/sparkles.mp3");
+                      if (sparkleContainerRef.current) {
+                        triggerSparkleEffect(e.currentTarget, sparkleContainerRef.current);
+                      }
+                    }}
+                    disabled={displayCowList.length < 2}
+                    className="w-full bg-gradient-to-r from-indigo-500/90 to-purple-500/90 hover:from-indigo-400 hover:to-purple-400 text-white font-semibold py-2.5 px-4 rounded-lg shadow-lg hover:shadow-indigo-400/30 transition-all duration-300 border border-indigo-400/20 hover:border-indigo-400/60 backdrop-blur-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-none text-sm flex items-center justify-center group"
+                  >
+                    <div className="w-4 h-4 relative mr-2 group-hover:scale-110 transition-transform duration-300">
+                      <Image 
+                        src="/cosmic cow.png" 
+                        alt="Fusion" 
+                        fill 
+                        className="object-contain"
+                      />
+                    </div>
+                    Fusion
+                  </Button>
+                  
+                  {displayCowList.length > 0 && (
+                    <>
+                      <div className="relative my-2">
+                        <div className="absolute inset-0 flex items-center">
+                          <div className="w-full border-t border-gradient-to-r from-transparent via-lime-400/30 to-transparent"></div>
+                        </div>
+                        <div className="relative flex justify-center text-xs">
+                          <span className="bg-black/50 px-2 text-lime-400/70">Harvest</span>
+                        </div>
+                      </div>
+                      <Button
+                        onClick={(e) => {
+                          handleHarvest(undefined, e.currentTarget);
+                          playSound("/sounds/sparkles.mp3");
+                        }}
+                        className="w-full bg-gradient-to-r from-amber-500/90 to-orange-500/90 hover:from-amber-400 hover:to-orange-400 text-black font-semibold py-2.5 px-4 rounded-lg shadow-lg hover:shadow-amber-400/30 transition-all duration-300 border border-amber-400/20 hover:border-amber-400/60 backdrop-blur-sm text-sm flex items-center justify-center group relative overflow-hidden"
+                      >
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -skew-x-12 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
+                        <div className="w-4 h-4 relative mr-2 group-hover:scale-110 transition-transform duration-300">
+                          <Image 
+                            src="/smalljar.png" 
+                            alt="Harvest" 
+                            fill 
+                            className="object-contain"
+                          />
+                        </div>
+                        Harvest All
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Processing Station */}
+              <div className="flex-1 p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-md font-bold text-lime-400 flex items-center">
+                  <Factory className="mr-2" size={16} />
+                  Processing
+                </h3>
+                </div>
+                
+                {/* Machine Status */}
+                <div className="mb-4">
+                  {ownedMachines.pro > 0 ? (
+                    <div className="bg-gradient-to-r from-purple-900/50 to-purple-800/50 rounded-lg p-3 border border-purple-400/40">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="font-bold text-purple-400 text-sm">NILK Machine PRO</span>
+                        <div className="flex space-x-1">
+                          <div className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-pulse"></div>
+                          <div className="w-1.5 h-1.5 bg-purple-300 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-3 mb-3">
+                        <div className="w-12 h-12 relative">
+                          <Image 
+                            src="/nilk machine PRO.png" 
+                            alt="NILK Machine PRO" 
+                            fill 
+                            className="object-contain"
+                          />
+                      </div>
+                        <div className="flex-1">
+                          <p className="text-xs text-purple-300 mb-1">Premium Unit</p>
+                          <div className="bg-purple-400/20 rounded-full h-2">
+                            <div className="bg-gradient-to-r from-purple-400 to-purple-300 h-2 rounded-full" style={{ width: '85%' }}></div>
+                          </div>
+                          <p className="text-xs text-purple-300 mt-1">85% Efficiency</p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : ownedMachines.standard > 0 ? (
+                    <div className="bg-gradient-to-r from-blue-900/50 to-blue-800/50 rounded-lg p-3 border border-blue-400/40">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="font-bold text-blue-400 text-sm">NILK Machine</span>
+                        <div className="flex space-x-1">
+                          <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse"></div>
+                          <div className="w-1.5 h-1.5 bg-blue-300 rounded-full animate-pulse" style={{ animationDelay: '0.3s' }}></div>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-3 mb-3">
+                        <div className="w-12 h-12 relative">
+                          <Image 
+                            src="/nilk machine.png" 
+                            alt="NILK Machine" 
+                            fill 
+                            className="object-contain"
+                          />
+                      </div>
+                        <div className="flex-1">
+                          <p className="text-xs text-blue-300 mb-1">Standard Unit</p>
+                          <div className="bg-blue-400/20 rounded-full h-2">
+                            <div className="bg-gradient-to-r from-blue-400 to-blue-300 h-2 rounded-full" style={{ width: '65%' }}></div>
+                          </div>
+                          <p className="text-xs text-blue-300 mt-1">65% Efficiency</p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-gradient-to-r from-orange-900/50 to-orange-800/50 rounded-lg p-3 border border-orange-600/40">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="font-bold text-orange-400 text-sm">Manual Processing</span>
+                        <div className="text-orange-400 text-xs bg-orange-400/20 px-2 py-1 rounded">ACTIVE</div>
+                      </div>
+                      <div className="flex items-center space-x-3 mb-3">
+                        <div className="w-12 h-12 relative">
+                          <Image 
+                            src="/manual processing.png" 
+                            alt="Manual Processing" 
+                            fill 
+                            className="object-contain"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-xs text-orange-300 mb-1">Basic Processing</p>
+                          <div className="bg-orange-400/20 rounded-full h-2">
+                            <div className="bg-gradient-to-r from-orange-400 to-orange-300 h-2 rounded-full" style={{ width: '35%' }}></div>
+                          </div>
+                          <p className="text-xs text-orange-300 mt-1">35% Efficiency</p>
+                        </div>
+                      </div>
+                      <Button
+                        onClick={() => {
+                          setIsMarketModalOpen(true);
+                          playSound("/sounds/sparkles.mp3");
+                        }}
+                        className="w-full bg-gradient-to-r from-lime-500 to-green-500 hover:from-lime-600 hover:to-green-600 text-black text-xs py-2 font-semibold rounded-lg shadow-lg hover:shadow-lime-500/25 transition-all duration-200 hover:scale-105 flex items-center justify-center"
+                      >
+                        <div className="w-4 h-4 relative mr-1">
+                          <Image 
+                            src="/nilk machine.png" 
+                            alt="Upgrade" 
+                            fill 
+                            className="object-contain"
+                          />
+                        </div>
+                        Upgrade Machine
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Flask Crafting */}
+                {hasFlaskBlueprint && (
+                  <div className="mb-4">
+                    <div className="bg-gradient-to-r from-cyan-900/50 to-teal-800/50 rounded-lg p-3 border border-cyan-400/40">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="font-bold text-cyan-400 text-sm flex items-center">
+                          <div className="w-4 h-4 relative mr-2">
+                            <Image 
+                              src="/smalljar.png" 
+                              alt="Flask Crafting" 
+                              fill 
+                              className="object-contain"
+                            />
+                          </div>
+                          Flask Crafting
+                        </span>
+                        {activeFlask && (
+                          <div className="text-cyan-400 text-xs bg-cyan-400/20 px-2 py-1 rounded flex items-center">
+                            <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse mr-1"></div>
+                            Active
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Active Flask Display */}
+                      {activeFlask && (
+                        <div className="mb-3 p-2 bg-cyan-400/10 rounded border border-cyan-400/20">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-semibold text-cyan-300">{activeFlask.name}</span>
+                            <ConsumableTimer expiryTime={activeFlask.expiryTime} />
+                          </div>
+                          <p className="text-xs text-cyan-400">{activeFlask.effectDescription}</p>
+                        </div>
+                      )}
+                      
+                      {/* Flask Options */}
+                      <div className="space-y-2">
+                        {Object.entries(FLASK_STATS).map(([flaskId, flask]) => {
+                          const canAfford = userRawNilkBalance >= flask.costRawNilk && userNilkBalance >= flask.costNilk;
+                          const isActive = activeFlask?.id === flaskId;
+                          
+                          return (
+                            <div 
+                              key={flaskId}
+                              className={`p-2 rounded border transition-all duration-200 ${
+                                isActive 
+                                  ? 'bg-cyan-400/20 border-cyan-400/40' 
+                                  : canAfford 
+                                    ? 'bg-gray-800/30 border-gray-600/30 hover:border-cyan-400/30 cursor-pointer' 
+                                    : 'bg-gray-900/30 border-gray-700/30 opacity-50'
+                              }`}
+                              onClick={() => {
+                                if (canAfford && !isActive && !activeFlask) {
+                                  const success = craftFlask(flaskId as FlaskId);
+                                  if (success) {
+                                    playSound("/sounds/sparkles.mp3");
+                                  }
+                                }
+                              }}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-2">
+                                  <div className="w-6 h-6 relative">
+                                    <Image 
+                                      src={flask.image} 
+                                      alt={flask.name} 
+                                      fill 
+                                      className="object-contain"
+                                    />
+                                  </div>
+                                  <div>
+                                    <p className="text-xs font-semibold text-white">{flask.name}</p>
+                                    <p className="text-xs text-gray-400">{flask.effectDescription}</p>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <div className="text-xs text-blue-400">{formatNumber(flask.costRawNilk)} Raw</div>
+                                  <div className="text-xs text-yellow-400">{formatNumber(flask.costNilk)} $NILK</div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      
+                      {!hasFlaskBlueprint && (
+                        <div className="text-center p-2">
+                          <p className="text-xs text-gray-400 mb-2">Flask Blueprint Required</p>
+                          <Button
+                            onClick={() => {
+                              setIsMarketModalOpen(true);
+                              playSound("/sounds/sparkles.mp3");
+                            }}
+                            className="w-full bg-gradient-to-r from-cyan-500 to-teal-500 hover:from-cyan-600 hover:to-teal-600 text-black text-xs py-1.5 font-semibold rounded-lg"
+                          >
+                            Get Blueprint
+                          </Button>
+                        </div>
                       )}
                     </div>
-                    <Button
-                      onClick={() => handleHarvest(cow.id)} 
-                      disabled={!canHarvest || !isConnected}
-                      size="sm"
-                      className={`text-xs px-2.5 py-1 ${canHarvest ? 'bg-green-500 hover:bg-green-600 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}
-                    >
-                      {canHarvest ? "Harvest" : "Waiting"}
-                    </Button>
                   </div>
-                );
-              }) : (
-                <p className="text-center text-gray-400 py-4">No cows in your herd yet. Buy one from the market!</p>
+                )}
+
+                {/* Boost Status */}
+                <div className="space-y-2">
+                  <div className="bg-gray-800/50 rounded-lg p-2 border border-gray-600/30">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-white">Yield Booster</span>
+                      <span className="text-lime-400 font-bold text-xs">Lvl {yieldBoosterLevelFromStore}</span>
+                    </div>
+                  </div>
+                  
+                  <div className={`rounded-lg p-2 border ${hasMoofiBadge ? 'bg-yellow-900/30 border-yellow-400/30' : 'bg-gray-800/30 border-gray-600/30'}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-4 h-4 relative">
+                          <Image 
+                            src="/MOOFI badge.png" 
+                            alt="MOOFI Badge" 
+                            fill 
+                            className={`object-contain ${!hasMoofiBadge ? 'opacity-50 grayscale' : ''}`}
+                          />
+                        </div>
+                        <span className="text-xs">MOOFI Badge</span>
+                      </div>
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${hasMoofiBadge ? 'bg-yellow-400/20 text-yellow-400' : 'bg-gray-600/20 text-gray-400'}`}>
+                        {hasMoofiBadge ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className={`rounded-lg p-2 border ${hasAlienFarmerBoost ? 'bg-purple-900/30 border-purple-400/30' : 'bg-gray-800/30 border-gray-600/30'}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-4 h-4 relative">
+                          <Image 
+                            src="/farmer.png" 
+                            alt="Alien Farmer" 
+                            fill 
+                            className={`object-contain ${!hasAlienFarmerBoost ? 'opacity-50 grayscale' : ''}`}
+                          />
+                        </div>
+                        <span className="text-xs">Alien Farmer</span>
+                      </div>
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${hasAlienFarmerBoost ? 'bg-purple-400/20 text-purple-400' : 'bg-gray-600/20 text-gray-400'}`}>
+                        {hasAlienFarmerBoost ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Connected Bottom: Cow Herd Inventory */}
+          <div className="mt-4">
+            <div className="bg-black/70 backdrop-blur-md rounded-2xl p-4 border-2 border-lime-400/40 shadow-2xl h-48">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-bold text-lime-400 flex items-center">
+                  <div className="w-6 h-6 relative mr-2">
+                    <Image 
+                      src="/NILK COW.png" 
+                      alt="Cow Herd" 
+                      fill 
+                      className="object-contain"
+                    />
+                  </div>
+                  Cow Herd ({displayCowList.length})
+                </h3>
+                <div className="text-sm text-gray-300 flex items-center space-x-2">
+                  <TrendingUp className="text-lime-400" size={14} />
+                  <span>
+                    <span className="text-lime-400 font-bold">
+                    {displayCowList.length > 0 ? Math.round((countReadyToHarvest(displayCowList, getHarvestStatus) / displayCowList.length) * 100) : 0}%
+                    </span> Ready
+                  </span>
+                </div>
+              </div>
+              
+              {displayCowList.length === 0 ? (
+                <div className="flex items-center justify-center" style={{ height: 'calc(100% - 3rem)' }}>
+                  <div className="text-center">
+                    <div className="text-gray-400 mb-3">
+                      <div className="w-12 h-12 relative mx-auto mb-2">
+                        <Image 
+                          src="/NILK COW.png" 
+                          alt="Empty Farm" 
+                          fill 
+                          className="object-contain opacity-50"
+                        />
+                      </div>
+                      <p className="text-sm font-bold">Your farm is empty!</p>
+                      <p className="text-xs">Get some cows to start producing NILK</p>
+                  </div>
+                  <Button
+                    onClick={() => {
+                      setIsMarketModalOpen(true);
+                      playSound("/sounds/sparkles.mp3");
+                    }}
+                      className="bg-gradient-to-r from-lime-500 to-green-500 hover:from-lime-600 hover:to-green-600 text-black font-semibold px-4 py-2 rounded-lg shadow-lg hover:shadow-lime-500/25 transition-all duration-200 hover:scale-105 text-sm"
+                  >
+                      Get Your First Cow
+                  </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-8 gap-3 max-h-24 overflow-y-auto pr-2">
+                  {displayCowList.map((cow) => {
+                    const harvestStatus = getHarvestStatus(cow);
+                    return (
+                      <div 
+                        key={cow.id} 
+                        className={`relative bg-gradient-to-br ${getRarityGradient(cow.rarity)} rounded-lg p-2 border-2 ${getRarityBorder(cow.rarity)} shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 cursor-pointer group ${harvestStatus.canHarvest ? 'animate-pulse' : ''}`}
+                        onClick={(e) => {
+                          if (harvestStatus.canHarvest) {
+                            handleHarvest(cow.id, e.currentTarget);
+                            playSound("/sounds/sparkles.mp3");
+                          }
+                        }}
+                      >
+                        {/* Cow Avatar */}
+                        <div className="relative mb-1">
+                          <div className="w-10 h-10 bg-gray-800/50 rounded-full flex items-center justify-center border-2 border-gray-600 group-hover:border-lime-400 transition-colors overflow-hidden">
+                            <div className="w-8 h-8 relative">
+                              <Image 
+                                src={cow.rarity === 'Galactic' ? '/galactic moo moo.png' : 
+                                     cow.rarity === 'Cosmic' ? '/cosmic cow.png' : 
+                                     '/NILK COW.png'} 
+                                alt={cow.name} 
+                                fill 
+                                className="object-contain"
+                              />
+                            </div>
+                          </div>
+                          {harvestStatus.canHarvest && (
+                            <div className="absolute -top-1 -right-1 w-3 h-3 bg-lime-400 rounded-full animate-ping"></div>
+                          )}
+                        </div>
+                        
+                        {/* Cow Info */}
+                        <div className="text-center">
+                          <p className="text-xs font-bold text-white truncate">{cow.name}</p>
+                          <p className="text-xs text-lime-400 font-semibold">Lvl {cow.level}</p>
+                          {harvestStatus.canHarvest ? (
+                            <div className="text-xs text-lime-400 font-bold">Ready!</div>
+                          ) : (
+                            <div className="text-xs text-gray-400">{harvestStatus.timeRemaining}</div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
           </div>
-
-          {/* Upgrades Section - Bottom Right - MODIFIED FOR NEW MARKET MODAL TRIGGER */}
-          <div className="bg-black/60 border border-lime-500/50 rounded-xl shadow-xl p-4">
-            <h2 className="text-xl font-semibold text-lime-300 mb-3">Farm Improvements</h2>
-            <Button 
-              onClick={() => setIsMainMarketModalOpen(true)}
-              disabled={!isConnected} // Keep disabled if not connected
-              className="w-full text-base py-3 bg-green-600/80 hover:bg-green-700/90 border border-green-500/50 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center mb-3 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <ShoppingCart size={20} className="mr-2" /> Browse Farm Market
-                  </Button>
-            <p className="text-xs text-green-300/70 mt-1 text-center px-2">Discover cows, boosters, and other valuable upgrades for your farm.</p>
-            
-            {/* Cow Fusion Chamber Button - Remains as is */}
-            {farmActions.map((actionItem) => (
-              <div key={actionItem.id} className="mt-4">
-                <Button 
-                  onClick={actionItem.action} 
-                  disabled={actionItem.disabled || !isConnected}
-                  className={`w-full text-base py-3 bg-purple-600/80 hover:bg-purple-700/90 border border-purple-500/50 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center ${actionItem.disabled || !isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  <actionItem.icon className="mr-2 h-5 w-5" /> {actionItem.name}
-                  </Button>
-                <p className="text-xs text-purple-300/70 mt-1 text-center px-2">{actionItem.description}</p>
-              </div>
-            ))}
-          </div>
         </div>
-      </main>
-      
-      {/* Main Market Modal (New) */}
-      {isMainMarketModalOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[120] p-4">
-          <div className="bg-gradient-to-br from-gray-800 via-gray-900 to-black border-2 border-green-600/70 rounded-xl shadow-2xl shadow-green-500/20 p-6 sm:p-8 w-full max-w-2xl text-white relative">
-            <Button onClick={() => setIsMainMarketModalOpen(false)} variant="ghost" className="absolute top-3 right-3 text-gray-400 hover:text-green-300 p-1 h-auto z-[130]">
-              <XCircle size={28} />
-                  </Button>
-            <div className="flex items-center justify-center mb-6">
-              <ShoppingCart size={36} className="mr-3 text-green-400" />
-              <h3 className="text-3xl font-bold text-green-300 font-title">Farm Market</h3>
+      </div>
+
+      {/* Modals */}
+      <Marketplace
+        isOpen={isMarketModalOpen}
+        onClose={() => setIsMarketModalOpen(false)}
+        items={initialMarketItems}
+        handleInitiatePurchase={handleInitiateMarketPurchase}
+        isOwnedAlienFarmerBoost={hasAlienFarmerBoost}
+        isOwnedMoofiBadge={hasMoofiBadge}
+        userNilkBalance={userNilkBalance}
+        userRawNilkBalance={userRawNilkBalance}
+      />
+
+      {/* Purchase Confirmation Modal */}
+      {isConfirmingPurchase && itemToPurchase && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center">
+          <div className="bg-gray-900 rounded-lg p-6 border border-lime-400/30 max-w-md w-full mx-4">
+            <h3 className="text-xl font-bold mb-4 text-lime-400">Confirm Purchase</h3>
+            <p className="text-gray-300 mb-4">
+              Are you sure you want to purchase {itemToPurchase.name}?
+            </p>
+            <div className="flex space-x-3">
+              <Button
+                onClick={() => {
+                  setIsConfirmingPurchase(false);
+                  setItemToPurchase(null);
+                }}
+                variant="outline"
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={(e) => handleConfirmMarketPurchase(itemToPurchase, '$NILK', e, 1, itemToPurchase.cost || 0)}
+                className="flex-1 bg-lime-500 hover:bg-lime-600 text-black"
+              >
+                Confirm
+              </Button>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto pr-2 pb-4">
-              {upgrades.map((item) => {
-                let currentCost = item.cost;
-                let itemDescription = item.description; // Full description for now, can be shortened if needed
-                let actionText = "View Details";
-                let isDisabled = !isConnected;
-                const currencyType = item.currency || '$NILK';
-
-                if (item.id === 'yield_booster') {
-                  if (yieldBoosterLevelFromStore >= MAX_COW_LEVEL) { itemDescription = `Yield Booster is at Max Level (${MAX_COW_LEVEL}).`; actionText = "Max Level"; isDisabled = true; }
-                  else { itemDescription = `Boost all cows' Raw Nilk production. Current Lvl: ${yieldBoosterLevelFromStore}.`; }
-                } else if (item.id === 'cow_evolution') {
-                  const evolvableCows = displayCowList.filter(c => c.level < MAX_COW_LEVEL);
-                  if (evolvableCows.length === 0 && displayCowList.length > 0) { itemDescription = "All your current cows are max level!"; actionText = "All Maxed"; isDisabled = true; }
-                  else if (displayCowList.length === 0) { itemDescription = "Evolves your highest level, non-maxed cow. You need a cow first!"; actionText = "No Cows"; isDisabled = true; }
-                  else { itemDescription = `Evolve a cow for a 15% (compounding) Raw Nilk yield increase per level.`;}
-                  currentCost = 0; // Cost varies, handled in confirmation modal
-                } else if (item.tier) { // Cow purchase
-                  itemDescription = `Acquire a ${item.name}. Produces ${COW_STATS[item.tier]?.rawNilkPerDayBase || 'N/A'} Raw Nilk/day (base).`;
-                  if (nextSpawnPointIndex >= cowSpawnPoints.length) { itemDescription = "Your farm is full! No more space for new cows currently."; actionText = "Farm Full"; isDisabled = true; }
-                }
-                // General check if user has enough currency for items with a fixed cost
-                if (currencyType === '$NILK' && currentCost > 0 && userNilkBalance < currentCost && actionText === "View Details") isDisabled = true;
-                if (currencyType === 'Raw Nilk' && currentCost > 0 && userRawNilkBalance < currentCost && actionText === "View Details") isDisabled = true;
-
-                return (
-                  <div key={item.id} className="bg-black/40 border border-green-700/50 rounded-lg p-4 flex flex-col justify-between space-y-3 shadow-md hover:shadow-green-500/30 transition-shadow">
-                    <div className="flex items-start space-x-3">
-                      <Avatar className="h-16 w-16 border-2 border-green-600 bg-green-900/50 flex-shrink-0 p-1">
-                        <AvatarImage src={item.image} alt={item.name} className="object-contain"/>
-                      <AvatarFallback>{item.name.substring(0,1)}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-grow">
-                        <p className="font-semibold text-lg text-green-200">{item.name}</p>
-                        <p className="text-xs text-green-400/80 leading-tight mt-1">{itemDescription}</p>
-                    </div>
-                    </div>
-                    <div className="flex items-center justify-between mt-auto pt-3 border-t border-green-700/30">
-                        <p className="text-sm text-white font-semibold">
-                          {currentCost > 0 ? `${currentCost} ${currencyType}` : item.id === 'cow_evolution' ? 'Cost Varies' : 'Free / Special'}
-                        </p>
-                    <Button 
-                          onClick={() => {
-                            handleInitiatePurchase(item.id);
-                            setIsMainMarketModalOpen(false); // Close this modal, open confirmation modal
-                          }} 
-                      size="sm"
-                          disabled={isDisabled}
-                          className={`text-xs px-3 py-1.5 whitespace-nowrap ${isDisabled ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-lime-500 hover:bg-lime-600 text-black'}`}
-                    >
-                         {actionText}
-                    </Button>
-                    </div>
-                  </div>
-                );
-              })}
-              </div>
-          </div>
-        </div>
-      )}
-      
-      {/* Market Modal (Confirmation Modal - remains largely unchanged) */}
-      {isMarketModalOpen && selectedUpgrade && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-          <div className="bg-gradient-to-br from-gray-900 to-black border-2 border-lime-600/70 rounded-xl shadow-2xl shadow-lime-500/20 p-6 sm:p-8 w-full max-w-md text-center relative">
-            <Button onClick={() => setIsMarketModalOpen(false)} variant="ghost" className="absolute top-3 right-3 text-gray-400 hover:text-lime-300 p-1 h-auto">
-              <XCircle size={24} />
-            </Button>
-            <img src={selectedUpgrade.image} alt={selectedUpgrade.name} className="w-24 h-24 mx-auto mb-4 rounded-lg bg-lime-900/50 p-2 border border-lime-700"/>
-            <h3 className="text-2xl sm:text-3xl font-bold mb-2 text-lime-300">{selectedUpgrade.name}</h3>
-            
-            {(() => {
-                let modalCost = 0;
-                let modalDescription = selectedUpgrade.description;
-                let targetCowInfo = "";
-                let actionButtonText = `Confirm Purchase with ${selectedUpgrade.currency || '$NILK'}`;
-                let purchaseDisabled = !isConnected;
-                const selectedUpgradeCurrency = selectedUpgrade.currency || '$NILK';
-
-                if (selectedUpgrade.id === 'yield_booster') {
-                    modalCost = 12000; if (yieldBoosterLevelFromStore > 0) modalCost = 12000 * Math.pow(1.4, yieldBoosterLevelFromStore);
-                    modalCost = Math.floor(modalCost);
-                    modalDescription = `Upgrade Yield Booster to Level ${yieldBoosterLevelFromStore + 1}. This will boost Raw Nilk production for all your cows by 10% (compounding).`;
-                    if (yieldBoosterLevelFromStore >= MAX_COW_LEVEL) { actionButtonText = "Max Level Reached"; purchaseDisabled = true; }
-                } else if (selectedUpgrade.id === 'cow_evolution') {
-                    const eligibleCowsForModal = [...displayCowList].filter(c => c.level < MAX_COW_LEVEL).sort((a, b) => b.level - a.level);
-                    if (eligibleCowsForModal.length > 0) {
-                        const targetCow = eligibleCowsForModal[0];
-                        const cowStat = COW_STATS[targetCow.tier];
-                        modalCost = cowStat.evolutionBaseCost + (targetCow.level * cowStat.evolutionLevelMultiplier);
-                        targetCowInfo = ` This will evolve ${targetCow.name} (Lvl ${targetCow.level}) to Level ${targetCow.level + 1}.`;
-                        modalDescription = `Evolve ${targetCow.name} to enhance its Raw Nilk production by 15%.`;
-                    } else {
-                        modalDescription = "No cows eligible for evolution at the moment.";
-                        actionButtonText = "No Eligible Cows"; purchaseDisabled = true;
-                    }
-                } else if (selectedUpgrade.tier) {
-                    modalCost = COW_STATS[selectedUpgrade.tier].directPurchaseCost;
-                    modalDescription = `This will add a ${COW_STATS[selectedUpgrade.tier].name} to your farm.`;
-                    if (nextSpawnPointIndex >= cowSpawnPoints.length) {
-                        modalDescription = "Your farm is full! Cannot purchase more cows.";
-                        actionButtonText = "Farm Full - Cannot Buy"; purchaseDisabled = true;
-                    }
-                }
-                if (selectedUpgradeCurrency === '$NILK' && userNilkBalance < modalCost) purchaseDisabled = true;
-                if (selectedUpgradeCurrency === 'Raw Nilk' && userRawNilkBalance < modalCost) purchaseDisabled = true;
-
-                return (
-                    <>
-                        <p className="text-sm text-green-400 mb-1 px-4">{modalDescription}{targetCowInfo}</p>
-                        <p className="text-lg font-semibold text-white mb-4">Cost: {modalCost > 0 ? `${modalCost} ${selectedUpgradeCurrency}` : "N/A"}</p>
-                        <div className="space-y-2">
-                            <Button 
-                                onClick={(e) => handleConfirmPurchase(selectedUpgrade, selectedUpgradeCurrency, e)}
-                                disabled={purchaseDisabled}
-                                className="w-full bg-gradient-to-r from-lime-500 to-green-600 hover:from-lime-600 hover:to-green-700 text-black font-semibold py-2.5 text-base shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center"
-                            >
-                                <Zap size={18} className="mr-2"/> {actionButtonText}
-                            </Button>
-                            <Button disabled className="w-full bg-purple-500/50 text-white/70 font-semibold py-2.5 text-base cursor-not-allowed"> Pay with $HYPE (Coming Soon) </Button>
-                            <Button disabled className="w-full bg-blue-500/50 text-white/70 font-semibold py-2.5 text-base cursor-not-allowed"> Pay with $USDC (Coming Soon) </Button>
-                        </div>
-                    </>
-                );
-            })()}
           </div>
         </div>
       )}
 
       {/* Cow Fusion Modal */}
       {isCowFusionModalOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-          <div className="bg-gradient-to-br from-gray-800 via-purple-900 to-gray-800 border-2 border-purple-600/70 rounded-xl shadow-2xl shadow-purple-500/20 p-6 sm:p-8 w-full max-w-lg text-white relative">
-            <Button onClick={() => setIsCowFusionModalOpen(false)} variant="ghost" className="absolute top-3 right-3 text-gray-400 hover:text-purple-300 p-1 h-auto">
-              <XCircle size={28} />
-            </Button>
-            <div className="flex items-center justify-center mb-6">
-              <Atom size={36} className="mr-3 text-purple-400" />
-              <h3 className="text-3xl font-bold text-purple-300 font-title">Cow Fusion Chamber</h3>
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center">
+          <div className="bg-gray-900 rounded-lg p-6 border border-lime-400/30 max-w-md w-full mx-4">
+            <h3 className="text-xl font-bold mb-4 text-lime-400">Cow Fusion Chamber</h3>
+            <p className="text-gray-300 mb-4">
+              Select cows to fuse together for more powerful variants.
+            </p>
+            <div className="flex space-x-3">
+              <Button
+                onClick={() => setIsCowFusionModalOpen(false)}
+                variant="outline"
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleConfirmFusion}
+                className="flex-1 bg-lime-500 hover:bg-lime-600 text-black"
+              >
+                Fuse Cows
+              </Button>
             </div>
-
-            {/* Content for fusion selection will go here */}
-            <div className="my-4 text-center">
-              <p className="text-purple-200/80">Select cows from your herd to attempt fusion.</p>
-              <p className="text-xs text-purple-400/60 mt-1">(E.g., 2 Common Cows can fuse into 1 Cosmic Cow. 4 Cosmic Cows can fuse into 1 Galactic Moo Moo.)</p>
-            </div>
-
-            {/* Placeholder for Cow Selection UI */}
-            <div className="min-h-[200px] bg-black/30 border border-purple-700/50 rounded-lg p-4 my-4 overflow-y-auto max-h-[300px]">
-              {displayCowList.length > 0 ? (
-                <div className="space-y-2">
-                  {displayCowList.map(cow => {
-                    const isSelected = selectedCowsForFusion.includes(cow.id);
-                    return (
-                      <div 
-                        key={cow.id}
-                        onClick={() => {
-                          if (isSelected) {
-                            setSelectedCowsForFusion(prev => prev.filter(id => id !== cow.id));
-                          } else {
-                            // Basic selection logic: allow selecting up to 4 cows for now
-                            // More complex validation (e.g. only 2 T1s or 4 T2s) will be handled before enabling fuse button
-                            if (selectedCowsForFusion.length < 4) { 
-                                setSelectedCowsForFusion(prev => [...prev, cow.id]);
-                            }
-                          }
-                        }}
-                        className={`flex items-center justify-between p-2.5 rounded-lg border-2 cursor-pointer transition-all duration-200 
-                                    ${isSelected ? 'bg-purple-600/50 border-purple-400 shadow-lg' : 'bg-black/40 border-purple-800/60 hover:border-purple-600/80'}`}
-                      >
-                        <div className="flex items-center">
-                          <Avatar className={`h-10 w-10 border ${isSelected ? 'border-purple-300' : 'border-purple-700'}`}>
-                            <AvatarImage src={cow.image} alt={cow.name} />
-                            <AvatarFallback className={`${isSelected ? 'bg-purple-500' : 'bg-purple-800'} text-white`}>{cow.name.substring(0,1)}</AvatarFallback>
-                          </Avatar>
-                          <div className="ml-3">
-                            <p className={`text-sm font-semibold ${isSelected ? 'text-white' : 'text-purple-200'}`}>{cow.name}</p>
-                            <p className={`text-xs ${isSelected ? 'text-purple-200/90' : 'text-purple-400/70'}`}>Tier {COW_STATS[cow.tier]?.name || cow.tier} - Lvl {cow.level} - {cow.rawNilkPerDay.toFixed(1)} Raw Nilk/day</p>
-                          </div>
-                        </div>
-                        {isSelected && <CheckCircle2 size={20} className="text-green-400 flex-shrink-0" />}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-center text-purple-300/70 py-10">You have no cows in your herd to fuse.</p>
-              )}
-            </div>
-
-            {/* Fusion Cost & Result Preview */}
-            <div className="my-4 p-3 bg-black/20 rounded-md border border-purple-800/40 min-h-[60px]">
-              {(() => {
-                const selectedCowObjects = selectedCowsForFusion.map(id => displayCowList.find(cow => cow.id === id)).filter(Boolean) as CowListItem[];
-                let fee = 0; let resultTier: CowTier | null = null; let resultName = ""; let canFuse = false;
-                
-                if (selectedCowObjects.length === COW_STATS.cosmic.inputsForFusion?.count && 
-                    selectedCowObjects.every(cow => cow && cow.tier === COW_STATS.cosmic.inputsForFusion?.tierInput)) {
-                  fee = COW_STATS.cosmic.fusionFee || 0; resultTier = 'cosmic'; resultName = COW_STATS.cosmic.name; canFuse = true;
-                } else if (selectedCowObjects.length === COW_STATS.galactic_moo_moo.inputsForFusion?.count && 
-                           selectedCowObjects.every(cow => cow && cow.tier === COW_STATS.galactic_moo_moo.inputsForFusion?.tierInput)) {
-                  fee = COW_STATS.galactic_moo_moo.fusionFee || 0; resultTier = 'galactic_moo_moo'; resultName = COW_STATS.galactic_moo_moo.name; canFuse = true;
-                }
-
-                if (!canFuse && selectedCowObjects.length > 0) return <p className="text-sm text-yellow-400/80">Invalid selection for fusion. Requires {COW_STATS.cosmic.inputsForFusion?.count}x {COW_STATS.common.name} or {COW_STATS.galactic_moo_moo.inputsForFusion?.count}x {COW_STATS.cosmic.name}.</p>;
-                else if (selectedCowObjects.length === 0) return <p className="text-sm text-purple-200/70">Select cows above to see fusion details.</p>;
-                
-                const hasEnoughNilk = userNilkBalance >= fee;
-                return ( <> <p className="text-sm text-purple-200">Fusion Fee: <span className={`font-semibold ${hasEnoughNilk ? 'text-white' : 'text-red-500'}`}>{fee} $NILK</span></p> <p className="text-sm text-purple-200">Expected Result: <span className="font-semibold text-white">{resultName || "N/A"}</span></p> {!hasEnoughNilk && canFuse && <p className="text-xs text-red-500 mt-1">Insufficient $NILK balance.</p>} </> );
-              })()}
-            </div>
-
-            <Button 
-              onClick={handleConfirmFusion} 
-              disabled={(() => {
-                const selectedCowObjects = selectedCowsForFusion.map(id => displayCowList.find(cow => cow.id === id)).filter(Boolean) as CowListItem[];
-                let fee = 0; let canFuse = false;
-                if (selectedCowObjects.length === COW_STATS.cosmic.inputsForFusion?.count && 
-                    selectedCowObjects.every(cow => cow && cow.tier === COW_STATS.cosmic.inputsForFusion?.tierInput)) {
-                  fee = COW_STATS.cosmic.fusionFee || 0; canFuse = true;
-                } else if (selectedCowObjects.length === COW_STATS.galactic_moo_moo.inputsForFusion?.count && 
-                           selectedCowObjects.every(cow => cow && cow.tier === COW_STATS.galactic_moo_moo.inputsForFusion?.tierInput)) {
-                  fee = COW_STATS.galactic_moo_moo.fusionFee || 0; canFuse = true;
-                }
-                return !canFuse || userNilkBalance < fee || !isConnected;
-              })()}
-              className="w-full bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white font-semibold py-3 text-lg shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Atom size={20} className="mr-2"/> Fuse Cows (Logic Update Pending)
-            </Button>
           </div>
         </div>
       )}
+
+      {/* Enhanced Sparkle Effect Container */}
+      <div ref={sparkleContainerRef} className="fixed inset-0 pointer-events-none overflow-hidden z-[150]" />
     </div>
   );
 }
 
-// Helper function for rarity color (if not already defined elsewhere)
-const rarityColor = (rarity: string) => {
-  if (rarity === COW_STATS.cosmic.name) return "bg-purple-600/70 text-purple-200 border border-purple-400";
-  if (rarity === COW_STATS.galactic_moo_moo.name) return "bg-blue-600/70 text-blue-200 border border-blue-400"; // Assuming Galactic is "Rare" color
-  if (rarity === COW_STATS.common.name) return "bg-green-600/70 text-green-200 border border-green-400"; // Assuming Common is "Uncommon" color
-  return "bg-gray-600/70 text-gray-200 border border-gray-400"; // Fallback
+// Helper function to calculate total farm production
+const calculateTotalProduction = (cowList: CowListItem[]) => {
+  return cowList.reduce((sum, cow) => sum + cow.rawNilkPerDay, 0);
+};
+
+// Helper function to count ready-to-harvest cows
+const countReadyToHarvest = (cowList: CowListItem[], getHarvestStatus: (cow: CowListItem) => any) => {
+  return cowList.filter(cow => getHarvestStatus(cow).canHarvest).length;
+};
+
+// Helper function to format large numbers
+const formatNumber = (num: number) => {
+  if (num >= 1000000) {
+    return (num / 1000000).toFixed(1) + 'M';
+  } else if (num >= 1000) {
+    return (num / 1000).toFixed(1) + 'K';
+  }
+  return num.toLocaleString();
 };
 
 // Initial cow data, adjusted for RawNilkPerDay
@@ -1290,4 +1834,40 @@ const cowsData: CowListItem[] = [
 
 // Old upgradeItems - REMOVED as 'upgrades' array is now defined dynamically using COW_STATS.
 // const upgradeItems: UpgradeItem[] = [ ... ];
+
+// Helper component for Consumable Timer
+const ConsumableTimer: React.FC<{ expiryTime: number }> = ({ expiryTime }) => {
+  const [timeLeft, setTimeLeft] = useState(expiryTime - Date.now());
+
+  useEffect(() => {
+    if (timeLeft <= 0) return;
+    const intervalId = setInterval(() => {
+      const newTimeLeft = expiryTime - Date.now();
+      if (newTimeLeft <= 0) {
+        setTimeLeft(0);
+        clearInterval(intervalId);
+        // Optionally, trigger a re-check/clear action from the store if needed, though _simulateAccumulation should handle it.
+      } else {
+        setTimeLeft(newTimeLeft);
+      }
+    }, 1000);
+    return () => clearInterval(intervalId);
+  }, [expiryTime, timeLeft]);
+
+  if (timeLeft <= 0) return <span className="text-red-500">Expired</span>;
+
+  const hours = Math.floor(timeLeft / (1000 * 60 * 60));
+  const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+  const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
+
+  return (
+    <span>
+      {hours > 0 ? `${hours}h ` : ''}
+      {minutes > 0 || hours > 0 ? `${minutes}m ` : ''}
+      {`${seconds}s`}
+    </span>
+  );
+};
+
+
 

@@ -75,40 +75,40 @@ const MusicWidget = () => {
   }, [hasInteracted]);
 
   const getVolumeIcon = () => {
-    if (isMuted || volume === 0) return <VolumeX size={20} />;
-    if (volume < 0.5) return <Volume size={20} />;
-    if (volume < 0.8) return <Volume1 size={20} />;
-    return <Volume2 size={20} />;
+    if (isMuted || volume === 0) return <VolumeX size={16} />;
+    if (volume < 0.5) return <Volume size={16} />;
+    if (volume < 0.8) return <Volume1 size={16} />;
+    return <Volume2 size={16} />;
   };
 
   return (
     <div
-      className={`fixed bottom-4 left-4 z-[200] bg-black/70 backdrop-blur-md text-white rounded-lg shadow-2xl transition-all duration-300 ease-in-out flex items-center p-2 space-x-2 ${isExpanded ? 'w-auto pr-3' : 'w-12 h-12 justify-center'}`}
+      className={`relative bg-black/30 backdrop-blur-sm text-white rounded-lg shadow-lg transition-all duration-300 ease-in-out flex items-center border border-lime-500/20 hover:border-lime-500/40 ${isExpanded ? 'p-1 space-x-1 w-auto pr-2' : 'w-8 h-8 justify-center p-0'}`}
     >
       <audio ref={audioRef} src={musicSrc} loop />
 
       <button
         onClick={toggleExpand}
-        className="p-1 hover:bg-white/20 rounded-full focus:outline-none flex-shrink-0"
+        className={`hover:bg-white/20 rounded-full focus:outline-none flex-shrink-0 flex items-center justify-center transition-colors ${isExpanded ? 'p-1' : 'w-full h-full'}`}
         aria-label={isExpanded ? 'Collapse widget' : 'Expand widget'}
       >
-        {isExpanded ? <ChevronDown size={20} /> : <Music size={20} />}
+        {isExpanded ? <ChevronDown size={16} /> : <Music size={16} />}
       </button>
 
       {isExpanded && (
         <>
           <button
             onClick={handlePlayPause}
-            className="p-2 hover:bg-white/20 rounded-full focus:outline-none flex-shrink-0"
+            className="p-1 hover:bg-white/20 rounded-full focus:outline-none flex-shrink-0 transition-colors"
             aria-label={isPlaying ? 'Pause music' : 'Play music'}
           >
-            {isPlaying ? <Pause size={20} /> : <Play size={20} />}
+            {isPlaying ? <Pause size={16} /> : <Play size={16} />}
           </button>
           
-          <div className="flex items-center space-x-1.5 min-w-[120px]">
+          <div className="flex items-center space-x-1 min-w-[80px]">
             <button
               onClick={handleMuteUnmute}
-              className="p-2 hover:bg-white/20 rounded-full focus:outline-none flex-shrink-0"
+              className="p-1 hover:bg-white/20 rounded-full focus:outline-none flex-shrink-0 transition-colors"
               aria-label={isMuted ? 'Unmute music' : 'Mute music'}
             >
               {getVolumeIcon()}
@@ -120,7 +120,7 @@ const MusicWidget = () => {
               step="0.01"
               value={isMuted ? 0 : volume}
               onChange={handleVolumeChange}
-              className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-lime-500"
+              className="w-full h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-lime-500"
               aria-label="Volume"
             />
           </div>

@@ -36,6 +36,20 @@ body {
   }
 }
 
+/* Price ticker scrolling animation */
+@keyframes scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-scroll {
+  animation: scroll 30s linear infinite;
+}
+
 .star-particle {
   /* The animation is set inline in StarBackground.tsx, 
      but you could define a base class for common properties if desired.
@@ -68,6 +82,23 @@ body {
   animation: sparkle-appear 0.3s ease-out forwards, sparkle-move var(--duration) ease-out var(--delay) forwards;
   pointer-events: none; /* So they don't interfere with clicks */
   z-index: 200; /* Ensure they are above other elements if needed */
+}
+
+/* Enhanced sparkle particles for processing and other pages */
+.sparkle-particle {
+  position: absolute;
+  left: var(--tx);
+  top: var(--ty);
+  width: var(--size);
+  height: var(--size);
+  background-color: var(--color);
+  border-radius: 50%;
+  opacity: 0;
+  transform: scale(0);
+  animation: sparkle-appear 0.3s ease-out forwards, sparkle-move var(--duration) ease-out var(--delay) forwards;
+  pointer-events: none;
+  z-index: 200;
+  box-shadow: 0 0 6px var(--color), 0 0 12px var(--color);
 }
 
 @layer base {

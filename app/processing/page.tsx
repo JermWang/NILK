@@ -159,12 +159,13 @@ export default function ProcessingPage() {
       increaseNilkBalance(actualNilkReceivedByUser)
       increaseTreasuryBalance(feeCollected)
 
-      let imgSource = "/icons/placeholder_bottle.svg";
+      let imgSource = "/smalljar.png"; // Default to smalljar for manual
       if (currentProcessingStats.id === 'pro') {
-        imgSource = MACHINES.pro.imageUrl || "/gallonjug.png";
+        imgSource = "/nilkcrate.png";
       } else if (currentProcessingStats.id === 'standard') {
-        imgSource = MACHINES.standard.imageUrl || "/icons/small_jar.svg";
+        imgSource = "/gallonjug.png";
       }
+      // Manual processing will use the default smalljar.png
 
       setSuccessPopup({
         show: true,
@@ -264,7 +265,7 @@ export default function ProcessingPage() {
   }
 
   return (
-    <div className="container mx-auto p-4 min-h-screen flex flex-col text-foreground pt-24">
+    <div className="container mx-auto p-4 min-h-screen flex flex-col text-foreground pt-40">
       {/* Main Content: Processing & Machine Management wrapped in a single div that was previously being duplicated */}
       <div className="flex-grow">
         {/* Sparkle container and main content area from original structure */}
@@ -325,11 +326,20 @@ export default function ProcessingPage() {
               })}
             </div>
             {currentProcessingStats && (
-              <div className="text-sm text-gray-300 bg-black/20 p-3 rounded-md border border-lime-800/60">
-                <p className="font-semibold text-lime-400 text-lg mb-1">Using: {currentProcessingStats.name}</p>
-                <p>Conversion Rate: <span className="text-white">{currentProcessingStats.conversionRate * 100}%</span> (Raw Nilk to $NILK value)</p>
-                <p>Processing Fee: <span className="text-white">{currentProcessingStats.feePercentage}%</span> (on $NILK value)</p>
-                <p className="text-xs text-gray-400 mt-1">{currentProcessingStats.description}</p>
+              <div className="text-sm text-gray-300 bg-black/20 p-3 rounded-md border border-lime-800/60 flex flex-col items-center">
+                {currentProcessingStats.imageUrl && (
+                  <img 
+                    src={currentProcessingStats.imageUrl} 
+                    alt={currentProcessingStats.name} 
+                    className="w-20 h-20 mb-3 rounded-md bg-lime-900/30 p-1 object-contain"
+                  />
+                )}
+                <p className="font-semibold text-lime-400 text-lg mb-1 text-center">Using: {currentProcessingStats.name}</p>
+                <div className="text-center">
+                  <p>Conversion Rate: <span className="text-white">{currentProcessingStats.conversionRate * 100}%</span> (Raw Nilk to $NILK value)</p>
+                  <p>Processing Fee: <span className="text-white">{currentProcessingStats.feePercentage}%</span> (on $NILK value)</p>
+                  <p className="text-xs text-gray-400 mt-1">{currentProcessingStats.description}</p>
+                </div>
               </div>
             )}
             {(ownedMachines.standard === 0 && ownedMachines.pro === 0) && (
