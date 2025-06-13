@@ -574,46 +574,46 @@ const useGameStore = create<GameStore>()(
         userHypeBalance: 0,
         treasuryBalance: 100000000,
         treasuryHypeBalance: 500000,
-        ownedMachines: { standard: 0, pro: 0 },
-        ownedCows: [],
-        yieldBoosterLevel: 0,
-        nextCowId: 1,
+  ownedMachines: { standard: 0, pro: 0 },
+  ownedCows: [],
+  yieldBoosterLevel: 0,
+  nextCowId: 1,
         lastGlobalHarvestTime: Date.now(),
-        hasMoofiBadge: false,
-        hasAlienFarmerBoost: false,
+  hasMoofiBadge: false,
+  hasAlienFarmerBoost: false,
         hasFlaskBlueprint: false,
-        activeFlask: null,
+  activeFlask: null,
         flaskInventory: [],
-        marketItems: initialMarketItems,
-        dynamicPricing: {
-          hyePrice: 42,
+      marketItems: initialMarketItems,
+      dynamicPricing: {
+        hyePrice: 42,
           lastPriceUpdate: 0,
           estimatedNilkUSD: 0,
-        },
-        liquidityPools: {
-          nilkHype: {
-            userLpTokens: 0,
+      },
+      liquidityPools: {
+        nilkHype: {
+          userLpTokens: 0,
             totalLpTokens: 0,
             nilkReserve: 0,
             hypeReserve: 0,
-            rewardsAccumulated: 0,
+          rewardsAccumulated: 0,
             lastRewardTime: 0,
             tradingFeeRate: 0.3,
-            totalFeesCollected: 0,
-          },
+          totalFeesCollected: 0,
         },
-        hypeRewards: {
-          dailyProcessingBonus: 0,
-          fusionMilestones: 0,
-          liquidityMilestones: 0,
-          lastDailyRewardClaim: 0,
-        },
-        userProfile: {
-          username: null,
-          avatarUrl: null,
-          xHandle: null,
-          isProfileComplete: false,
-        },
+      },
+      hypeRewards: {
+        dailyProcessingBonus: 0,
+        fusionMilestones: 0,
+        liquidityMilestones: 0,
+        lastDailyRewardClaim: 0,
+      },
+      userProfile: {
+        username: null,
+        avatarUrl: null,
+        xHandle: null,
+        isProfileComplete: false,
+      },
       };
 
       const actions = {
@@ -627,170 +627,197 @@ const useGameStore = create<GameStore>()(
         decreaseHypeBalance: (amount: number) => set((state) => ({ userHypeBalance: Math.max(0, state.userHypeBalance - amount) })),
         setHypeBalance: (amount: number) => set((state) => ({ userHypeBalance: amount })),
         increaseTreasuryBalance: (amount: number) => set((state) => ({ treasuryBalance: state.treasuryBalance + amount })),
-        
-        addOwnedMachine: (machineId) => {
-          set((state) => ({
-            ownedMachines: {
-              ...state.ownedMachines,
-              [machineId]: (state.ownedMachines[machineId] || 0) + 1,
-            },
-          }));
+    
+    addOwnedMachine: (machineId) => {
+      set((state) => ({
+        ownedMachines: {
+          ...state.ownedMachines,
+          [machineId]: (state.ownedMachines[machineId] || 0) + 1,
         },
-        performMachineFusion: () => {
-          const state = get();
-          const fusionCost = MACHINES.pro.fusionCostNilk;
-          if (fusionCost === undefined) {
-              console.error("Pro machine fusion cost is not defined");
-              return; // void is fine if GameActions for this is void
-          }
-          if (state.ownedMachines.standard >= 2 && state.userNilkBalance >= fusionCost) {
-            set({
-              userNilkBalance: state.userNilkBalance - fusionCost,
-              treasuryBalance: state.treasuryBalance + fusionCost,
-              ownedMachines: {
-                ...state.ownedMachines,
-                standard: state.ownedMachines.standard - 2,
-                pro: (state.ownedMachines.pro || 0) + 1,
-              },
-            });
-          } // Missing return true/false if GameActions expects boolean
-        },
+      }));
+    },
+    performMachineFusion: () => {
+      const state = get();
+      const fusionCost = MACHINES.pro.fusionCostNilk;
+      if (fusionCost === undefined) {
+          console.error("Pro machine fusion cost is not defined");
+          return; // void is fine if GameActions for this is void
+      }
+      if (state.ownedMachines.standard >= 2 && state.userNilkBalance >= fusionCost) {
+        set({
+          userNilkBalance: state.userNilkBalance - fusionCost,
+          treasuryBalance: state.treasuryBalance + fusionCost,
+          ownedMachines: {
+            ...state.ownedMachines,
+            standard: state.ownedMachines.standard - 2,
+            pro: (state.ownedMachines.pro || 0) + 1,
+          },
+        });
+      } // Missing return true/false if GameActions expects boolean
+    },
 
-        updateCowProductionRates: () => {
-          set(state => {
-            const newOwnedCows = state.ownedCows.map(cow => {
-              const newProductionRate = calculateCowProduction(cow, state.yieldBoosterLevel, state.hasAlienFarmerBoost);
-              if (newProductionRate !== cow.currentRawNilkPerDay) {
-                return { ...cow, currentRawNilkPerDay: newProductionRate };
-              }
-              return cow;
-            });
-            if (JSON.stringify(newOwnedCows) !== JSON.stringify(state.ownedCows)) {
-              return { ...state, ownedCows: newOwnedCows };
+    updateCowProductionRates: () => {
+      set(state => {
+        const newOwnedCows = state.ownedCows.map(cow => {
+          const newProductionRate = calculateCowProduction(cow, state.yieldBoosterLevel, state.hasAlienFarmerBoost);
+          if (newProductionRate !== cow.currentRawNilkPerDay) {
+            return { ...cow, currentRawNilkPerDay: newProductionRate };
+          }
+          return cow;
+        });
+        if (JSON.stringify(newOwnedCows) !== JSON.stringify(state.ownedCows)) {
+          return { ...state, ownedCows: newOwnedCows };
+        }
+        return state;
+      });
+    },
+
+    purchaseCow: (tier: CowTier, quantity: number) => {
+      const state = get();
+      const cowStat = COW_STATS[tier];
+      if (quantity <= 0) return false;
+      const totalCost = cowStat.directPurchaseCost * quantity;
+      if (state.userNilkBalance < totalCost) return false;
+      const newCows: Cow[] = [];
+      let currentNextCowId = state.nextCowId;
+      for (let i = 0; i < quantity; i++) {
+        newCows.push({
+          id: 'cow_' + currentNextCowId,
+          tier: tier,
+          name: cowStat.name,
+          rawNilkPerDayBase: cowStat.rawNilkPerDayBase,
+          level: 0, 
+          currentRawNilkPerDay: 0,
+          accumulatedRawNilk: 0,
+          lastHarvestTime: Date.now(),
+          imageUrl: cowStat.imageUrl,
+        });
+        currentNextCowId++;
+      }
+                set({
+          userNilkBalance: state.userNilkBalance - totalCost,
+          treasuryBalance: state.treasuryBalance + totalCost,
+          ownedCows: [...state.ownedCows, ...newCows],
+          nextCowId: currentNextCowId,
+        });
+        // Update production rates after purchase
+        const newState = get();
+        const updatedCows = newState.ownedCows.map(cow => ({
+          ...cow,
+          currentRawNilkPerDay: calculateCowProduction(cow, newState.yieldBoosterLevel, newState.hasAlienFarmerBoost)
+        }));
+        set({ ownedCows: updatedCows }); 
+        return true;
+    },
+
+    evolveCow: (cowId: string) => {
+      const state = get();
+      const cowIndex = state.ownedCows.findIndex(c => c.id === cowId);
+      if (cowIndex === -1) return false;
+      const cow = state.ownedCows[cowIndex];
+      if (cow.level >= MAX_COW_LEVEL) return false;
+      const cowStatDetails = COW_STATS[cow.tier];
+      const cost = cowStatDetails.evolutionBaseCost + (cow.level * cowStatDetails.evolutionLevelMultiplier);
+      if (state.userNilkBalance >= cost) {
+        const newOwnedCowsList = [...state.ownedCows];
+        newOwnedCowsList[cowIndex] = { ...cow, level: cow.level + 1 };
+        set({
+          userNilkBalance: state.userNilkBalance - cost,
+          treasuryBalance: state.treasuryBalance + cost,
+          ownedCows: newOwnedCowsList,
+        });
+        // Update production rates after evolution
+        const newState = get();
+        const updatedCows = newState.ownedCows.map(cow => ({
+          ...cow,
+          currentRawNilkPerDay: calculateCowProduction(cow, newState.yieldBoosterLevel, newState.hasAlienFarmerBoost)
+        }));
+        set({ ownedCows: updatedCows });
+        return true;
+      }
+      return false;
+    },
+    
+    fuseCows: (inputCowIds: string[], outputTier: CowTier) => {
+      const state = get();
+      const outputCowStat = COW_STATS[outputTier];
+      if (!outputCowStat.inputsForFusion || typeof outputCowStat.fusionFee !== 'number') return false;
+      const { tierInput, count: inputCount } = outputCowStat.inputsForFusion;
+      const fusionFee = outputCowStat.fusionFee;
+      const inputCows = state.ownedCows.filter(c => inputCowIds.includes(c.id) && c.tier === tierInput);
+      if (inputCows.length !== inputCount) return false;
+      if (state.userNilkBalance >= fusionFee) {
+        const remainingCows = state.ownedCows.filter(c => !inputCowIds.includes(c.id));
+        const newFusedCow: Cow = {
+          id: 'cow_' + state.nextCowId,
+          tier: outputTier,
+          name: outputCowStat.name,
+          rawNilkPerDayBase: outputCowStat.rawNilkPerDayBase,
+          level: 0, 
+          currentRawNilkPerDay: 0,
+          accumulatedRawNilk: 0,
+          lastHarvestTime: Date.now(),
+          imageUrl: outputCowStat.imageUrl,
+        };
+        set({
+          userNilkBalance: state.userNilkBalance - fusionFee,
+          treasuryBalance: state.treasuryBalance + fusionFee,
+          ownedCows: [...remainingCows, newFusedCow],
+          nextCowId: state.nextCowId + 1,
+        });
+        // Update production rates after fusion
+        const newState = get();
+        const updatedCows = newState.ownedCows.map(cow => ({
+          ...cow,
+          currentRawNilkPerDay: calculateCowProduction(cow, newState.yieldBoosterLevel, newState.hasAlienFarmerBoost)
+        }));
+        set({ ownedCows: updatedCows });
+        return true;
+      }
+      return false;
+    },
+
+    harvestRawNilkFromCow: (cowId: string) => {
+      set(state => {
+        const cowIndex = state.ownedCows.findIndex(c => c.id === cowId);
+        if (cowIndex === -1) return state;
+        const cow = state.ownedCows[cowIndex];
+        let amountToHarvest = cow.accumulatedRawNilk;
+        if (amountToHarvest === 0 && cow.currentRawNilkPerDay > 0) { 
+            const hoursSinceLastHarvest = (Date.now() - cow.lastHarvestTime) / (1000 * 60 * 60);
+            let actualCooldownHours = 24; 
+            if (state.activeFlask && state.activeFlask.expiryTime > Date.now() && state.activeFlask.cooldownReductionPercent) {
+                actualCooldownHours *= (1 - state.activeFlask.cooldownReductionPercent / 100);
             }
-            return state;
-          });
-        },
+            if (hoursSinceLastHarvest >= actualCooldownHours / 24) {
+                 amountToHarvest = cow.currentRawNilkPerDay * Math.min(hoursSinceLastHarvest / 24, 1); 
+            }
+        }
+        amountToHarvest = parseFloat(amountToHarvest.toFixed(2));
+        if (state.activeFlask && state.activeFlask.expiryTime > Date.now() && state.activeFlask.yieldBoostPercent) {
+            amountToHarvest *= (1 + state.activeFlask.yieldBoostPercent / 100);
+        }
+        amountToHarvest = parseFloat(amountToHarvest.toFixed(2));
+        if (amountToHarvest <= 0) return state;
+        const newOwnedCows = [...state.ownedCows];
+        newOwnedCows[cowIndex] = { ...cow, accumulatedRawNilk: 0, lastHarvestTime: Date.now() };
+        return { ...state, userRawNilkBalance: state.userRawNilkBalance + amountToHarvest, ownedCows: newOwnedCows };
+      });
+    },
 
-        purchaseCow: (tier: CowTier, quantity: number) => {
-          const state = get();
-          const cowStat = COW_STATS[tier];
-          if (quantity <= 0) return false;
-          const totalCost = cowStat.directPurchaseCost * quantity;
-          if (state.userNilkBalance < totalCost) return false;
-          const newCows: Cow[] = [];
-          let currentNextCowId = state.nextCowId;
-          for (let i = 0; i < quantity; i++) {
-            newCows.push({
-              id: 'cow_' + currentNextCowId,
-              tier: tier,
-              name: cowStat.name,
-              rawNilkPerDayBase: cowStat.rawNilkPerDayBase,
-              level: 0, 
-              currentRawNilkPerDay: 0,
-              accumulatedRawNilk: 0,
-              lastHarvestTime: Date.now(),
-              imageUrl: cowStat.imageUrl,
-            });
-            currentNextCowId++;
-          }
-                    set({
-              userNilkBalance: state.userNilkBalance - totalCost,
-              treasuryBalance: state.treasuryBalance + totalCost,
-              ownedCows: [...state.ownedCows, ...newCows],
-              nextCowId: currentNextCowId,
-            });
-            // Update production rates after purchase
-            const newState = get();
-            const updatedCows = newState.ownedCows.map(cow => ({
-              ...cow,
-              currentRawNilkPerDay: calculateCowProduction(cow, newState.yieldBoosterLevel, newState.hasAlienFarmerBoost)
-            }));
-            set({ ownedCows: updatedCows }); 
-            return true;
-        },
-
-        evolveCow: (cowId: string) => {
-          const state = get();
-          const cowIndex = state.ownedCows.findIndex(c => c.id === cowId);
-          if (cowIndex === -1) return false;
-          const cow = state.ownedCows[cowIndex];
-          if (cow.level >= MAX_COW_LEVEL) return false;
-          const cowStatDetails = COW_STATS[cow.tier];
-          const cost = cowStatDetails.evolutionBaseCost + (cow.level * cowStatDetails.evolutionLevelMultiplier);
-          if (state.userNilkBalance >= cost) {
-            const newOwnedCowsList = [...state.ownedCows];
-            newOwnedCowsList[cowIndex] = { ...cow, level: cow.level + 1 };
-            set({
-              userNilkBalance: state.userNilkBalance - cost,
-              treasuryBalance: state.treasuryBalance + cost,
-              ownedCows: newOwnedCowsList,
-            });
-            // Update production rates after evolution
-            const newState = get();
-            const updatedCows = newState.ownedCows.map(cow => ({
-              ...cow,
-              currentRawNilkPerDay: calculateCowProduction(cow, newState.yieldBoosterLevel, newState.hasAlienFarmerBoost)
-            }));
-            set({ ownedCows: updatedCows });
-            return true;
-          }
-          return false;
-        },
-        
-        fuseCows: (inputCowIds: string[], outputTier: CowTier) => {
-          const state = get();
-          const outputCowStat = COW_STATS[outputTier];
-          if (!outputCowStat.inputsForFusion || typeof outputCowStat.fusionFee !== 'number') return false;
-          const { tierInput, count: inputCount } = outputCowStat.inputsForFusion;
-          const fusionFee = outputCowStat.fusionFee;
-          const inputCows = state.ownedCows.filter(c => inputCowIds.includes(c.id) && c.tier === tierInput);
-          if (inputCows.length !== inputCount) return false;
-          if (state.userNilkBalance >= fusionFee) {
-            const remainingCows = state.ownedCows.filter(c => !inputCowIds.includes(c.id));
-            const newFusedCow: Cow = {
-              id: 'cow_' + state.nextCowId,
-              tier: outputTier,
-              name: outputCowStat.name,
-              rawNilkPerDayBase: outputCowStat.rawNilkPerDayBase,
-              level: 0, 
-              currentRawNilkPerDay: 0,
-              accumulatedRawNilk: 0,
-              lastHarvestTime: Date.now(),
-              imageUrl: outputCowStat.imageUrl,
-            };
-            set({
-              userNilkBalance: state.userNilkBalance - fusionFee,
-              treasuryBalance: state.treasuryBalance + fusionFee,
-              ownedCows: [...remainingCows, newFusedCow],
-              nextCowId: state.nextCowId + 1,
-            });
-            // Update production rates after fusion
-            const newState = get();
-            const updatedCows = newState.ownedCows.map(cow => ({
-              ...cow,
-              currentRawNilkPerDay: calculateCowProduction(cow, newState.yieldBoosterLevel, newState.hasAlienFarmerBoost)
-            }));
-            set({ ownedCows: updatedCows });
-            return true;
-          }
-          return false;
-        },
-
-        harvestRawNilkFromCow: (cowId: string) => {
-          set(state => {
-            const cowIndex = state.ownedCows.findIndex(c => c.id === cowId);
-            if (cowIndex === -1) return state;
-            const cow = state.ownedCows[cowIndex];
+    harvestAllRawNilk: () => {
+      set(state => {
+        let totalHarvested = 0;
+        const updatedCows = state.ownedCows.map(cow => {
             let amountToHarvest = cow.accumulatedRawNilk;
-            if (amountToHarvest === 0 && cow.currentRawNilkPerDay > 0) { 
+            if (amountToHarvest === 0 && cow.currentRawNilkPerDay > 0) {
                 const hoursSinceLastHarvest = (Date.now() - cow.lastHarvestTime) / (1000 * 60 * 60);
-                let actualCooldownHours = 24; 
+                let actualCooldownHours = 24;
                 if (state.activeFlask && state.activeFlask.expiryTime > Date.now() && state.activeFlask.cooldownReductionPercent) {
                     actualCooldownHours *= (1 - state.activeFlask.cooldownReductionPercent / 100);
                 }
                 if (hoursSinceLastHarvest >= actualCooldownHours / 24) {
-                     amountToHarvest = cow.currentRawNilkPerDay * Math.min(hoursSinceLastHarvest / 24, 1); 
+                    amountToHarvest = cow.currentRawNilkPerDay * Math.min(hoursSinceLastHarvest / 24, 1); 
                 }
             }
             amountToHarvest = parseFloat(amountToHarvest.toFixed(2));
@@ -798,142 +825,115 @@ const useGameStore = create<GameStore>()(
                 amountToHarvest *= (1 + state.activeFlask.yieldBoostPercent / 100);
             }
             amountToHarvest = parseFloat(amountToHarvest.toFixed(2));
-            if (amountToHarvest <= 0) return state;
-            const newOwnedCows = [...state.ownedCows];
-            newOwnedCows[cowIndex] = { ...cow, accumulatedRawNilk: 0, lastHarvestTime: Date.now() };
-            return { ...state, userRawNilkBalance: state.userRawNilkBalance + amountToHarvest, ownedCows: newOwnedCows };
-          });
-        },
+            if (amountToHarvest > 0) {
+                totalHarvested += amountToHarvest;
+                return { ...cow, accumulatedRawNilk: 0, lastHarvestTime: Date.now() };
+            }
+            return cow;
+        });
+        if (totalHarvested > 0) {
+          return { ...state, userRawNilkBalance: state.userRawNilkBalance + totalHarvested, ownedCows: updatedCows };
+        }
+        return state;
+      });
+    },
+    _simulateAccumulation: (deltaTimeSeconds: number) => {
+        set(state => {
+            let newState: Partial<GameState> = {};
+            let changed = false;
 
-        harvestAllRawNilk: () => {
-          set(state => {
-            let totalHarvested = 0;
-            const updatedCows = state.ownedCows.map(cow => {
-                let amountToHarvest = cow.accumulatedRawNilk;
-                if (amountToHarvest === 0 && cow.currentRawNilkPerDay > 0) {
-                    const hoursSinceLastHarvest = (Date.now() - cow.lastHarvestTime) / (1000 * 60 * 60);
-                    let actualCooldownHours = 24;
-                    if (state.activeFlask && state.activeFlask.expiryTime > Date.now() && state.activeFlask.cooldownReductionPercent) {
-                        actualCooldownHours *= (1 - state.activeFlask.cooldownReductionPercent / 100);
-                    }
-                    if (hoursSinceLastHarvest >= actualCooldownHours / 24) {
-                        amountToHarvest = cow.currentRawNilkPerDay * Math.min(hoursSinceLastHarvest / 24, 1); 
-                    }
-                }
-                amountToHarvest = parseFloat(amountToHarvest.toFixed(2));
-                if (state.activeFlask && state.activeFlask.expiryTime > Date.now() && state.activeFlask.yieldBoostPercent) {
-                    amountToHarvest *= (1 + state.activeFlask.yieldBoostPercent / 100);
-                }
-                amountToHarvest = parseFloat(amountToHarvest.toFixed(2));
-                if (amountToHarvest > 0) {
-                    totalHarvested += amountToHarvest;
-                    return { ...cow, accumulatedRawNilk: 0, lastHarvestTime: Date.now() };
+            if (state.activeFlask && state.activeFlask.expiryTime <= Date.now()) {
+                newState.activeFlask = null;
+                changed = true;
+            }
+
+            const currentOwnedCows = newState.activeFlask === null ? state.ownedCows.map(c=>({...c})) : state.ownedCows; 
+
+            const newOwnedCows = currentOwnedCows.map(cow => {
+                const productionPerSecond = cow.currentRawNilkPerDay / (24 * 60 * 60);
+                if (productionPerSecond === 0 && cow.accumulatedRawNilk === 0) return cow;
+                let newAccumulation = cow.accumulatedRawNilk + (productionPerSecond * deltaTimeSeconds);
+                newAccumulation = parseFloat(newAccumulation.toFixed(4));
+                if (newAccumulation !== cow.accumulatedRawNilk) {
+                    if (!changed) changed = true; // Ensure changed is true if only accumulation happened
+                    return { ...cow, accumulatedRawNilk: newAccumulation };
                 }
                 return cow;
             });
-            if (totalHarvested > 0) {
-              return { ...state, userRawNilkBalance: state.userRawNilkBalance + totalHarvested, ownedCows: updatedCows };
+
+            if (changed) {
+                newState.ownedCows = newOwnedCows;
+                return { ...state, ...newState };
             }
             return state;
-          });
-        },
-        _simulateAccumulation: (deltaTimeSeconds: number) => {
-            set(state => {
-                let newState: Partial<GameState> = {};
-                let changed = false;
+        });
+    },
 
-                if (state.activeFlask && state.activeFlask.expiryTime <= Date.now()) {
-                    newState.activeFlask = null;
-                    changed = true;
-                }
+    upgradeYieldBooster: () => {
+      const state = get();
+      const currentLevel = state.yieldBoosterLevel;
+      if (currentLevel >= YIELD_BOOSTER_MAX_LEVEL) return false;
+      let cost = 12000; 
+      if (currentLevel > 0) {
+        cost = 12000 * Math.pow(1.4, currentLevel); 
+      }
+      cost = Math.floor(cost);
+      if (state.userNilkBalance >= cost) {
+        set({
+          userNilkBalance: state.userNilkBalance - cost,
+          treasuryBalance: state.treasuryBalance + cost,
+          yieldBoosterLevel: currentLevel + 1,
+        });
+        get().actions.updateCowProductionRates(); 
+        return true;
+      }
+      return false;
+    },
 
-                const currentOwnedCows = newState.activeFlask === null ? state.ownedCows.map(c=>({...c})) : state.ownedCows; 
+    purchaseMoofiBadge: () => {
+      const state = get();
+      const MOOFI_BADGE_COST = 1000000;
+      if (state.hasMoofiBadge) {
+        console.warn("[purchaseMoofiBadge] MOOFI Badge already owned.");
+        return false;
+      }
+      if (state.userNilkBalance < MOOFI_BADGE_COST) {
+        console.warn(`[purchaseMoofiBadge] Insufficient NILK. Need: ${MOOFI_BADGE_COST}, Have: ${state.userNilkBalance}`);
+        return false;
+      }
+      set(currentState => ({
+        userNilkBalance: currentState.userNilkBalance - MOOFI_BADGE_COST,
+        treasuryBalance: currentState.treasuryBalance + MOOFI_BADGE_COST,
+        hasMoofiBadge: true,
+        }));
+      console.log("[purchaseMoofiBadge] MOOFI Badge purchased successfully.");
+        return true;
+    },
 
-                const newOwnedCows = currentOwnedCows.map(cow => {
-                    const productionPerSecond = cow.currentRawNilkPerDay / (24 * 60 * 60);
-                    if (productionPerSecond === 0 && cow.accumulatedRawNilk === 0) return cow;
-                    let newAccumulation = cow.accumulatedRawNilk + (productionPerSecond * deltaTimeSeconds);
-                    newAccumulation = parseFloat(newAccumulation.toFixed(4));
-                    if (newAccumulation !== cow.accumulatedRawNilk) {
-                        if (!changed) changed = true; // Ensure changed is true if only accumulation happened
-                        return { ...cow, accumulatedRawNilk: newAccumulation };
-                    }
-                    return cow;
-                });
+    purchaseAlienFarmerBoost: () => {
+      const cost = 75000; // Example cost, define properly
+      if (get().hasAlienFarmerBoost) return false;
+      if (get().userNilkBalance < cost) {
+        return false;
+      }
+      get().actions.decreaseNilkBalance(cost);
+      get().actions.increaseTreasuryBalance(cost);
+      set({ hasAlienFarmerBoost: true });
+      get().actions.updateCowProductionRates(); // Recalculate production after boost
+      return true;
+    },
 
-                if (changed) {
-                    newState.ownedCows = newOwnedCows;
-                    return { ...state, ...newState };
-                }
-                return state;
-            });
-        },
-
-        upgradeYieldBooster: () => {
-          const state = get();
-          const currentLevel = state.yieldBoosterLevel;
-          if (currentLevel >= YIELD_BOOSTER_MAX_LEVEL) return false;
-          let cost = 12000; 
-          if (currentLevel > 0) {
-            cost = 12000 * Math.pow(1.4, currentLevel); 
-          }
-          cost = Math.floor(cost);
-          if (state.userNilkBalance >= cost) {
-            set({
-              userNilkBalance: state.userNilkBalance - cost,
-              treasuryBalance: state.treasuryBalance + cost,
-              yieldBoosterLevel: currentLevel + 1,
-            });
-            get().actions.updateCowProductionRates(); 
-            return true;
-          }
-          return false;
-        },
-
-        purchaseMoofiBadge: () => {
-          const state = get();
-          const MOOFI_BADGE_COST = 1000000;
-          if (state.hasMoofiBadge) {
-            console.warn("[purchaseMoofiBadge] MOOFI Badge already owned.");
-            return false;
-          }
-          if (state.userNilkBalance < MOOFI_BADGE_COST) {
-            console.warn(`[purchaseMoofiBadge] Insufficient NILK. Need: ${MOOFI_BADGE_COST}, Have: ${state.userNilkBalance}`);
-            return false;
-          }
-          set(currentState => ({
-            userNilkBalance: currentState.userNilkBalance - MOOFI_BADGE_COST,
-            treasuryBalance: currentState.treasuryBalance + MOOFI_BADGE_COST,
-            hasMoofiBadge: true,
-            }));
-          console.log("[purchaseMoofiBadge] MOOFI Badge purchased successfully.");
-            return true;
-        },
-
-        purchaseAlienFarmerBoost: () => {
-          const cost = 75000; // Example cost, define properly
-          if (get().hasAlienFarmerBoost) return false;
-          if (get().userNilkBalance < cost) {
-            return false;
-          }
-          get().actions.decreaseNilkBalance(cost);
-          get().actions.increaseTreasuryBalance(cost);
-          set({ hasAlienFarmerBoost: true });
-          get().actions.updateCowProductionRates(); // Recalculate production after boost
-          return true;
-        },
-
-        purchaseFlaskBlueprint: () => {
-          const cost = 10000; // From tokenomics
-          if (get().hasFlaskBlueprint) return false;
-          if (get().userNilkBalance < cost) {
-            return false;
-          }
-          get().actions.decreaseNilkBalance(cost);
-          get().actions.increaseTreasuryBalance(cost);
-          set({ hasFlaskBlueprint: true });
-          return true;
-        },
+    purchaseFlaskBlueprint: () => {
+      const cost = 10000; // From tokenomics
+      if (get().hasFlaskBlueprint) return false;
+      if (get().userNilkBalance < cost) {
+        return false;
+      }
+      get().actions.decreaseNilkBalance(cost);
+      get().actions.increaseTreasuryBalance(cost);
+      set({ hasFlaskBlueprint: true });
+      return true;
+    },
 
             craftFlask: async (flaskId: FlaskId): Promise<boolean> => {
               if (!get().hasFlaskBlueprint) {
@@ -963,8 +963,8 @@ const useGameStore = create<GameStore>()(
                 return true;
               } catch(e) {
                 console.error(e);
-            return false;
-          }
+        return false;
+      }
         },
 
         activateFlask: async (flaskType: FlaskId): Promise<boolean> => {
