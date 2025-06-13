@@ -4,7 +4,8 @@ import { createContext, useContext, useEffect, useState, useRef, ReactNode } fro
 import { useAccount, useSignMessage, useDisconnect } from 'wagmi';
 import { SiweMessage } from 'siwe';
 import { supabase } from '@/lib/supabaseClient';
-import useGameStore, { useGameActions, initialMarketItems } from '@/app/store/useGameStore';
+import useGameStore, { useGameActions } from '@/app/store/useGameStore';
+import { initialMarketItems } from '@/app/config/marketItems';
 
 interface AuthContextType {
   session: { user: { wallet_address: string } } | null;

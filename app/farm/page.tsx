@@ -651,6 +651,20 @@ export default function NilkFarm3D() {
   const [fusionCowOne, setFusionCowOne] = useState<string | null>(null);
   const [fusionCowTwo, setFusionCowTwo] = useState<string | null>(null);
 
+  // Missing state variables
+  const [displayCowList, setDisplayCowList] = useState<CowListItem[]>([]);
+  const [nextSpawnPointIndex, setNextSpawnPointIndex] = useState(0);
+  const [isLoadingNilkBalance, setIsLoadingNilkBalance] = useState(true);
+  const [isLoadingRawNilkBalance, setIsLoadingRawNilkBalance] = useState(true);
+  const [isMarketModalOpen, setIsMarketModalOpen] = useState(false);
+  const [isCowFusionModalOpen, setIsCowFusionModalOpen] = useState(false);
+  const [isConfirmingPurchase, setIsConfirmingPurchase] = useState(false);
+  const [itemToPurchase, setItemToPurchase] = useState<UpgradeItem | null>(null);
+  const [userHypeBalance, setUserHypeBalance] = useState(0);
+  
+  // Missing refs
+  const sparkleContainerRef = useRef<HTMLDivElement>(null);
+
   // Zustand state selectors
   const { 
     userNilkBalance, 
