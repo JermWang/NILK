@@ -46,7 +46,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { initialMarketItems, type UpgradeItem } from "@/app/config/marketItems"
 import Marketplace from "./components/Marketplace"
 import FlaskManager from "./components/FlaskManager"
-import FarmStatsPanel from "./components/FarmStatsPanel"
 
 // GLTF Model paths - These become fallbacks or defaults if not specified by tier
 const DEFAULT_COW_MODEL_PATH = "/MODELS/COW_optimized.glb";
@@ -651,35 +650,34 @@ export default function NilkFarm3D() {
   const [fusionCowOne, setFusionCowOne] = useState<string | null>(null);
   const [fusionCowTwo, setFusionCowTwo] = useState<string | null>(null);
 
-  // Zustand state selectors
-  const { 
-    userNilkBalance, 
-    userRawNilkBalance, 
-    ownedCows, 
-    ownedMachines, 
-    yieldBoosterLevel, 
-    hasMoofiBadge, 
-    hasAlienFarmerBoost, 
-    activeFlask, 
-    lastGlobalHarvestTime, 
-    hasFlaskBlueprint, 
-    flaskInventory
-  } = useGameStore(state => ({
-    userNilkBalance: state.userNilkBalance,
-    userRawNilkBalance: state.userRawNilkBalance,
-    ownedCows: state.ownedCows,
-    ownedMachines: state.ownedMachines,
-    yieldBoosterLevel: state.yieldBoosterLevel,
-    hasMoofiBadge: state.hasMoofiBadge,
-    hasAlienFarmerBoost: state.hasAlienFarmerBoost,
-    activeFlask: state.activeFlask,
-    lastGlobalHarvestTime: state.lastGlobalHarvestTime,
-    hasFlaskBlueprint: state.hasFlaskBlueprint,
-    flaskInventory: state.flaskInventory,
-  }), shallow);
+  // Zustand state selectors - using individual selectors to avoid infinite loop
+  const userNilkBalance = useGameStore(state => state.userNilkBalance);
+  const userRawNilkBalance = useGameStore(state => state.userRawNilkBalance);
+  const ownedCows = useGameStore(state => state.ownedCows);
+  const hasFlaskBlueprint = useGameStore(state => state.hasFlaskBlueprint);
+  const activeFlask = useGameStore(state => state.activeFlask);
+  const flaskInventory = useGameStore(state => state.flaskInventory);
+  const yieldBoosterLevel = useGameStore(state => state.yieldBoosterLevel);
+  const hasMoofiBadge = useGameStore(state => state.hasMoofiBadge);
+  const hasAlienFarmerBoost = useGameStore(state => state.hasAlienFarmerBoost);
+  const ownedMachines = useGameStore(state => state.ownedMachines);
 
   const actions = useGameActions();
+  const { craftFlask } = actions;
   const { handleError, renderError } = useErrorHandler();
+
+  // Missing state variables
+  const [displayCowList, setDisplayCowList] = useState<CowListItem[]>([]);
+  const [isMarketModalOpen, setIsMarketModalOpen] = useState(false);
+  const [isConfirmingPurchase, setIsConfirmingPurchase] = useState(false);
+  const [itemToPurchase, setItemToPurchase] = useState<UpgradeItem | null>(null);
+  const [isCowFusionModalOpen, setIsCowFusionModalOpen] = useState(false);
+  const [isLoadingNilkBalance, setIsLoadingNilkBalance] = useState(true);
+  const [isLoadingRawNilkBalance, setIsLoadingRawNilkBalance] = useState(true);
+  const [nextSpawnPointIndex, setNextSpawnPointIndex] = useState(0);
+  const sparkleContainerRef = useRef<HTMLDivElement>(null);
+
+  const [selectedCowsForFusion, setSelectedCowsForFusion] = useState<string[]>([]);
 
   useEffect(() => {
     if (userNilkBalance !== undefined && userNilkBalance !== null) {
@@ -814,13 +812,13 @@ export default function NilkFarm3D() {
       name: "Yield Booster",
       cost: (() => {
         let calculatedCost = 12000;
-        const tempYieldBoosterLevel = yieldBoosterLevelFromStore; // Use actual store value
+        const tempYieldBoosterLevel = yieldBoosterLevel; // Use actual store value
         if (tempYieldBoosterLevel > 0) {
           calculatedCost = 12000 * Math.pow(1.4, tempYieldBoosterLevel);
         }
         return Math.floor(calculatedCost);
       })(),
-      description: `Boost all cows' Raw Nilk production by 10% per level (compounding). Current Lvl: ${yieldBoosterLevelFromStore}`,
+      description: `Boost all cows' Raw Nilk production by 10% per level (compounding). Current Lvl: ${yieldBoosterLevel}`,
       image: "/gallonjug.png",
       id: "yield_booster_legacy",
       category: 'boosters'
@@ -1040,6 +1038,17 @@ export default function NilkFarm3D() {
       }
     }));
   }, [ownedCows]);
+
+  const userHypeBalance = useGameStore(state => state.userHypeBalance);
+
+  if (isLoadingNilkBalance || isLoadingRawNilkBalance) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-800 text-white p-4">
+        <Loader2 className="h-16 w-16 text-lime-400 animate-spin" />
+        <p className="ml-4 text-2xl font-semibold font-title">Loading Cosmic Data...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-black via-green-900 to-black text-white overflow-hidden">
@@ -1592,7 +1601,7 @@ export default function NilkFarm3D() {
                   <div className="bg-gray-800/50 rounded-lg p-2 border border-gray-600/30">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-white">Yield Booster</span>
-                      <span className="text-lime-400 font-bold text-xs">Lvl {yieldBoosterLevelFromStore}</span>
+                      <span className="text-lime-400 font-bold text-xs">Lvl {yieldBoosterLevel}</span>
                     </div>
                   </div>
                   
