@@ -38,6 +38,7 @@ import * as THREE from "three"
 import { RepeatWrapping } from "three"
 import useGameStore, { useGameActions, COW_STATS, FLASK_STATS, ActiveFlask, FlaskId } from "../store/useGameStore"
 import { useErrorHandler, validators, antiCheat } from "../utils/errorHandling"
+import { shallow } from 'zustand/shallow';
 
 import type { GameActions, Cow as StoreCow, CowTier } from "../store/useGameStore"
 import Image from 'next/image'
