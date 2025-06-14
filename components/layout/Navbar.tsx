@@ -67,7 +67,7 @@ export default function Navbar() {
           </Link>
           <div className="flex items-center space-x-1 sm:space-x-2 md:space-x-4">
             <Link href="/" legacyBehavior passHref>
-              <a className={`font-title flex items-center px-2 py-1 sm:px-3 sm:py-2 rounded-md text-lg transition-colors duration-200 hover:text-lime-300 ${pathname === '/' ? 'text-lime-400' : 'text-gray-300'}`}>
+              <a className={`font-title flex items-center px-2 py-1 sm:px-3 sm:py-2 rounded-md text-lg transition-colors duration-200 hover:text-lime-300 hover:bg-lime-500/10 ${pathname === '/' ? 'text-lime-400 bg-lime-500/20 border border-lime-500/30' : 'text-gray-300'}`}>
                 <Info className="w-4 h-4 mr-1.5" />Info
               </a>
             </Link>
@@ -75,7 +75,7 @@ export default function Navbar() {
             {/* Game Hub Dropdown */}
             <Popover>
                 <PopoverTrigger asChild>
-                    <Button variant="ghost" className="font-title flex items-center space-x-1 text-lg hover:text-lime-300 text-gray-300 px-2 py-1 sm:px-3 sm:py-2">
+                    <Button variant="ghost" className={`font-title flex items-center space-x-1 text-lg hover:text-lime-300 hover:bg-lime-500/10 px-2 py-1 sm:px-3 sm:py-2 ${gameLinks.some(link => pathname === link.href) ? 'text-lime-400 bg-lime-500/20 border border-lime-500/30' : 'text-gray-300'}`}>
                         <span>Game Hub</span>
                         <ChevronDown className="h-5 w-5" />
                     </Button>
@@ -83,7 +83,7 @@ export default function Navbar() {
                 <PopoverContent className="w-56 bg-slate-900/95 border-lime-500/50 text-lime-200 p-2">
                     <div className="grid gap-1">
                         {gameLinks.map((link) => (
-                            <Link key={link.href} href={link.href} className={`flex items-center space-x-3 p-2 rounded-md hover:bg-lime-700/30 hover:text-lime-100 transition-colors ${pathname === link.href ? 'text-lime-300' : ''}`}>
+                            <Link key={link.href} href={link.href} className={`flex items-center space-x-3 p-2 rounded-md hover:bg-lime-700/30 hover:text-lime-100 transition-colors ${pathname === link.href ? 'text-lime-300 bg-lime-700/20' : ''}`}>
                                 <link.icon className="h-5 w-5" />
                                 <span>{link.label}</span>
                             </Link>
@@ -95,7 +95,7 @@ export default function Navbar() {
             {/* DeFi Dropdown */}
             <Popover>
                 <PopoverTrigger asChild>
-                    <Button variant="ghost" className="font-title flex items-center space-x-1 text-lg hover:text-purple-300 text-gray-300 px-2 py-1 sm:px-3 sm:py-2">
+                    <Button variant="ghost" className={`font-title flex items-center space-x-1 text-lg hover:text-purple-300 hover:bg-purple-500/10 px-2 py-1 sm:px-3 sm:py-2 ${defiLinks.some(link => pathname === link.href) ? 'text-purple-400 bg-purple-500/20 border border-purple-500/30' : 'text-gray-300'}`}>
                         <span>DeFi</span>
                         <ChevronDown className="h-5 w-5" />
                     </Button>
@@ -103,7 +103,7 @@ export default function Navbar() {
                 <PopoverContent className="w-56 bg-slate-900/95 border-purple-500/50 text-purple-200 p-2">
                     <div className="grid gap-1">
                         {defiLinks.map((link) => (
-                            <Link key={link.href} href={link.href} className={`flex items-center space-x-3 p-2 rounded-md hover:bg-purple-700/30 hover:text-purple-100 transition-colors ${pathname === link.href ? 'text-purple-300' : ''}`}>
+                            <Link key={link.href} href={link.href} className={`flex items-center space-x-3 p-2 rounded-md hover:bg-purple-700/30 hover:text-purple-100 transition-colors ${pathname === link.href ? 'text-purple-300 bg-purple-700/20' : ''}`}>
                                 <link.icon className="h-5 w-5" />
                                 <span>{link.label}</span>
                             </Link>
@@ -113,7 +113,7 @@ export default function Navbar() {
             </Popover>
 
             <Link href="/leaderboard" legacyBehavior passHref>
-              <a className={`font-title flex items-center px-2 py-1 sm:px-3 sm:py-2 rounded-md text-lg transition-colors duration-200 hover:text-yellow-300 ${pathname === '/leaderboard' ? 'text-yellow-400' : 'text-gray-300'}`}>
+              <a className={`font-title flex items-center px-2 py-1 sm:px-3 sm:py-2 rounded-md text-lg transition-colors duration-200 hover:text-yellow-300 hover:bg-yellow-500/10 ${pathname === '/leaderboard' ? 'text-yellow-400 bg-yellow-500/20 border border-yellow-500/30' : 'text-gray-300'}`}>
                 <Trophy className="w-4 h-4 mr-1.5" />Leaderboard
               </a>
             </Link>
