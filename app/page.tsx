@@ -8,7 +8,7 @@ import { OrbitControls, useGLTF, Environment, Text, useTexture, Plane, ContactSh
 import { Button } from '@/components/ui/button';
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Info, Play, XCircle, Wallet, Home as FarmIcon, Factory, Combine, Coins, Award, Sparkles, Sparkles as WelcomeIcon, ListChecks, Package, Droplets, TrendingUp, Scaling, Clock, Leaf, Percent, Banknote, Recycle, Truck, Zap } from 'lucide-react';
+import { Info, Play, XCircle, Wallet, Home as FarmIcon, Factory, Combine, Coins, Award, Sparkles, Sparkles as WelcomeIcon, ListChecks, Package, Droplets, TrendingUp, Scaling, Clock, Leaf, Percent, Banknote, Recycle, Truck, Zap, User, ExternalLink, Crown } from 'lucide-react';
 import * as THREE from 'three';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createClient } from '@supabase/supabase-js'
@@ -21,6 +21,8 @@ type LeaderboardEntry = {
   raw_nilk_processed: number;
   hype_earned: number;
   fusion_count: number;
+  avatar_url?: string;
+  x_handle?: string;
 };
 
 // GLTF Model Loader
@@ -303,7 +305,7 @@ export default function LandingPage() {
           </Button>
               <Button
                 variant="outline"
-                className="flex-1 bg-black/50 border-purple-500 hover:bg-purple-700/30 text-purple-300 hover:text-purple-100 py-3 text-lg font-title pointer-events-auto"
+                className="flex-1 bg-black/50 border-yellow-500 hover:bg-yellow-700/30 text-yellow-300 hover:text-yellow-100 py-3 text-lg font-title pointer-events-auto"
                 onClick={() => {
                   setActiveTab("leaderboard");
                   setShowInfoModal(true);
@@ -1428,6 +1430,7 @@ export default function LandingPage() {
                               <tr className="border-b border-purple-400/20 text-purple-300">
                                 <th className="p-3">Rank</th>
                                 <th className="p-3">Player</th>
+                                <th className="p-3">X Handle</th>
                                 <th className="p-3 text-right">Raw Nilk Processed</th>
                                 <th className="p-3 text-right">HYPE Earned</th>
                                 <th className="p-3 text-right">Fusions</th>
@@ -1437,13 +1440,46 @@ export default function LandingPage() {
                               {leaderboardData.length > 0 ? (
                                 leaderboardData.map((entry, index) => (
                                   <tr key={entry.rank} className="border-b border-slate-700 hover:bg-slate-800/50">
-                                    <td className={`p-3 font-bold ${
+                                    <td className={`p-3 font-bold flex items-center ${
                                       index === 0 ? 'text-yellow-400' :
                                       index === 1 ? 'text-slate-300' :
                                       index === 2 ? 'text-orange-400' : ''
-                                    }`}>{entry.rank}</td>
-                                    <td className="p-3 font-mono" title={entry.wallet_address || 'Unknown'}>
-                                        {entry.username || (entry.wallet_address ? `${entry.wallet_address.substring(0, 6)}...${entry.wallet_address.substring(entry.wallet_address.length - 4)}` : 'Unknown')}
+                                    }`}>
+                                      {index === 0 && <Crown className="w-4 h-4 mr-1" />}
+                                      {entry.rank}
+                                    </td>
+                                    <td className="p-3">
+                                      <div className="flex items-center space-x-3">
+                                        {entry.avatar_url ? (
+                                          <img 
+                                            src={entry.avatar_url} 
+                                            alt="Profile" 
+                                            className="w-10 h-10 rounded-full border-2 border-lime-400"
+                                          />
+                                        ) : (
+                                          <div className="w-10 h-10 rounded-full border-2 border-lime-400 bg-slate-700 flex items-center justify-center">
+                                            <User className="w-5 h-5 text-slate-400" />
+                                          </div>
+                                        )}
+                                        <span className="font-mono" title={entry.wallet_address || 'Unknown'}>
+                                          {entry.username || (entry.wallet_address ? `${entry.wallet_address.substring(0, 6)}...${entry.wallet_address.substring(entry.wallet_address.length - 4)}` : 'Unknown')}
+                                        </span>
+                                      </div>
+                                    </td>
+                                    <td className="p-3">
+                                      {entry.x_handle ? (
+                                        <a 
+                                          href={`https://x.com/${entry.x_handle}`} 
+                                          target="_blank" 
+                                          rel="noopener noreferrer"
+                                          className="text-blue-400 hover:text-blue-300 flex items-center space-x-1"
+                                        >
+                                          <span>@{entry.x_handle}</span>
+                                          <ExternalLink className="w-3 h-3" />
+                                        </a>
+                                      ) : (
+                                        <span className="text-slate-500">-</span>
+                                      )}
                                     </td>
                                     <td className="p-3 text-right">{(entry.raw_nilk_processed || 0).toLocaleString()}</td>
                                     <td className="p-3 text-right">{(entry.hype_earned || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}</td>
@@ -1452,7 +1488,7 @@ export default function LandingPage() {
                                 ))
                               ) : (
                                 <tr>
-                                  <td colSpan={5} className="text-center p-8 text-slate-400">
+                                  <td colSpan={6} className="text-center p-8 text-slate-400">
                                     No data available. Be the first to make your mark!
                                   </td>
                                 </tr>

@@ -4,12 +4,18 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
-import { Award, ChevronLeft, Loader2, Crown } from 'lucide-react';
+import { Award, ChevronLeft, Loader2, Crown, User, ExternalLink, RefreshCw } from 'lucide-react';
+import Image from 'next/image';
 
 interface LeaderboardEntry {
-  username: string;
-  nilk_balance: number;
   rank: number;
+  wallet_address: string;
+  username: string;
+  raw_nilk_processed: number;
+  hype_earned: number;
+  fusion_count: number;
+  avatar_url?: string;
+  x_handle?: string;
 }
 
 export default function LeaderboardPage() {
@@ -21,12 +27,14 @@ export default function LeaderboardPage() {
     const fetchLeaderboard = async () => {
       try {
         setLoading(true);
-        const { data, error } = await supabase.rpc('get_leaderboard');
+        const { data, error } = await (supabase as any).rpc('get_leaderboard') as { data: LeaderboardEntry[] | null, error: any };
 
         if (error) {
+          console.error("Leaderboard RPC error:", error);
           throw error;
         }
 
+        console.log("Leaderboard data received:", data);
         setLeaderboard(data || []);
       } catch (err: any) {
         console.error("Error fetching leaderboard:", err);
@@ -59,7 +67,14 @@ export default function LeaderboardPage() {
           <Award className="mr-4 text-yellow-400 h-10 w-10" />
           Cosmic Rankings
         </h1>
-        <div style={{ width: '150px' }} /> {/* Spacer */}
+        <Button
+          onClick={() => window.location.reload()}
+          variant="outline"
+          className="border-lime-500 text-lime-300 hover:bg-lime-700/30"
+        >
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Refresh
+        </Button>
       </header>
 
       <main className="flex-grow bg-slate-900/80 border border-lime-500/70 rounded-2xl p-6 shadow-2xl backdrop-blur-lg">
@@ -77,7 +92,9 @@ export default function LeaderboardPage() {
                 <tr>
                   <th scope="col" className="px-6 py-3 text-left text-sm font-semibold text-lime-200 uppercase tracking-wider font-orbitron">Rank</th>
                   <th scope="col" className="px-6 py-3 text-left text-sm font-semibold text-lime-200 uppercase tracking-wider font-orbitron">Farmer</th>
-                  <th scope="col" className="px-6 py-3 text-right text-sm font-semibold text-lime-200 uppercase tracking-wider font-orbitron">$NILK Balance</th>
+                  <th scope="col" className="px-6 py-3 text-right text-sm font-semibold text-lime-200 uppercase tracking-wider font-orbitron">Raw Nilk Processed</th>
+                  <th scope="col" className="px-6 py-3 text-right text-sm font-semibold text-lime-200 uppercase tracking-wider font-orbitron">HYPE Earned</th>
+                  <th scope="col" className="px-6 py-3 text-right text-sm font-semibold text-lime-200 uppercase tracking-wider font-orbitron">Fusions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800">
@@ -87,8 +104,55 @@ export default function LeaderboardPage() {
                       {entry.rank === 1 && <Crown className="mr-2 h-5 w-5" />}
                       {entry.rank}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-lg text-white">{entry.username || 'Anonymous Farmer'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-lg text-lime-400 font-mono text-right">{entry.nilk_balance.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center space-x-3">
+                        {/* Profile Picture */}
+                        <div className="flex-shrink-0 h-10 w-10">
+                          {entry.avatar_url ? (
+                            <Image
+                              className="h-10 w-10 rounded-full border-2 border-lime-500/50"
+                              src={entry.avatar_url}
+                              alt={`${entry.username || 'Anonymous'} avatar`}
+                              width={40}
+                              height={40}
+                            />
+                          ) : (
+                            <div className="h-10 w-10 rounded-full bg-slate-700 border-2 border-lime-500/50 flex items-center justify-center">
+                              <User className="h-5 w-5 text-lime-400" />
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Name and X Handle */}
+                        <div className="flex flex-col">
+                          <div className="text-lg text-white font-medium">
+                            {entry.username || 'Anonymous Farmer'}
+                          </div>
+                                                     {entry.x_handle && (
+                             <div className="flex items-center space-x-1 text-sm text-blue-400">
+                               <span>{entry.x_handle.startsWith('@') ? entry.x_handle : `@${entry.x_handle}`}</span>
+                               <a
+                                 href={`https://x.com/${entry.x_handle.replace('@', '')}`}
+                                 target="_blank"
+                                 rel="noopener noreferrer"
+                                 className="hover:text-blue-300 transition-colors"
+                               >
+                                 <ExternalLink className="h-3 w-3" />
+                               </a>
+                             </div>
+                           )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-lg text-lime-400 font-mono text-right">
+                      {entry.raw_nilk_processed?.toLocaleString(undefined, { maximumFractionDigits: 2 }) || '0'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-lg text-yellow-400 font-mono text-right">
+                      {entry.hype_earned?.toLocaleString(undefined, { maximumFractionDigits: 2 }) || '0'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-lg text-purple-400 font-mono text-right">
+                      {entry.fusion_count || 0}
+                    </td>
                   </tr>
                 ))}
               </tbody>
