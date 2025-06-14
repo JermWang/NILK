@@ -3,7 +3,6 @@ import { create } from 'zustand';
 import { shallow } from 'zustand/shallow';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { achievementManager } from './achievementSystem';
-import { supabase } from '@/lib/supabaseClient';
 
 export interface Machine {
   id: MachineType;
@@ -86,34 +85,35 @@ export interface CowStatData {
 export const COW_STATS: Record<CowTier, CowStatData> = {
   common: {
     name: "Common Cow",
-    rawNilkPerDayBase: 150000, // S1: 30x increase
-    directPurchaseCost: 65000, 
-    evolutionBaseCost: 1200,
-    evolutionLevelMultiplier: 600, 
+    rawNilkPerDayBase: 5000, // 5x ACCELERATED for 2-month cycle
+    directPurchaseCost: 65000, // 5x INCREASED for whale protection (1B supply)
+    evolutionBaseCost: 1200, // Keep same
+    evolutionLevelMultiplier: 600, // Keep same
     imageUrl: "/NILK COW.png",
     modelPath: "/MODELS/COW_optimized.glb",
     description: "A humble beginning to your Nilk empire."
+    // No fusion inputs defined for Common Cow as it's the base for fusion
   },
   cosmic: {
     name: "Cosmic Cow",
-    rawNilkPerDayBase: 450000, // S1: 30x increase
-    directPurchaseCost: 275000, 
-    evolutionBaseCost: 4000,
-    evolutionLevelMultiplier: 2000, 
+    rawNilkPerDayBase: 15000, // 4.3x ACCELERATED for 2-month cycle
+    directPurchaseCost: 275000, // 5x INCREASED for whale protection (1B supply)
+    evolutionBaseCost: 4000, // Keep same
+    evolutionLevelMultiplier: 2000, // Keep same
     inputsForFusion: { tierInput: 'common', count: 2 },
-    fusionFee: 75000, // S1: 5x increase
+    fusionFee: 15000, // Keep same
     imageUrl: "/cosmic cow.png",
     modelPath: "/MODELS/COW_COSMIC_optimized.glb",
     description: "A stellar producer of Raw Nilk."
   },
   galactic_moo_moo: {
     name: "Galactic Moo Moo",
-    rawNilkPerDayBase: 1500000, // S1: 30x increase
-    directPurchaseCost: 750000, 
-    evolutionBaseCost: 18000,
-    evolutionLevelMultiplier: 9000, 
+    rawNilkPerDayBase: 50000, // 3.3x ACCELERATED for 2-month cycle
+    directPurchaseCost: 750000, // 2.5x INCREASED for whale protection (1B supply)
+    evolutionBaseCost: 18000, // Keep same
+    evolutionLevelMultiplier: 9000, // Keep same
     inputsForFusion: { tierInput: 'cosmic', count: 4 },
-    fusionFee: 350000, // S1: 5x increase
+    fusionFee: 70000, // Keep same
     imageUrl: "/galactic moo moo.png",
     modelPath: "/MODELS/COW_GALACTIC_optimized.glb",
     description: "The ultimate legend in Nilk production."
@@ -127,52 +127,63 @@ const YIELD_BOOSTER_MAX_LEVEL = 10; // Define max level for yield booster
 // --- End Cow Definitions ---
 
 // --- Flask (Consumable) Definitions ---
-// Aligned with backend `track-event` function
-export type FlaskId = 'YIELD_BOOST' | 'FUSION_FLUX' | 'CHRONO_CONDENSATE';
+export type FlaskId = 'flask_of_swift_harvest' | 'flask_of_bountiful_yield' | 'flask_of_efficient_processing';
 
+// Define structure for active flask buff
 export interface ActiveFlask {
   id: FlaskId;
-  expiresAt: number; // Timestamp
+  name: string;
+  expiryTime: number; // Timestamp when the buff expires
+  effectDescription: string;
+  // Specific effect values stored on activation
+  cooldownReductionPercent?: number;
+  yieldBoostPercent?: number;
+  processingFeeReduction?: number; // Absolute reduction
 }
 
 export const FLASK_STATS: Record<FlaskId, { 
     name: string; 
     description: string; 
     costRawNilk: number; 
-    costNilk: number;
+    costNilk: number; // Catalysis Fee
     durationHours: number; 
     image: string;
     effectDescription: string;
+    cooldownReductionPercent?: number;
+    yieldBoostPercent?: number;
+    processingFeeReduction?: number;
 }> = {
-  'YIELD_BOOST': {
-    name: 'Yield-Boost Flask',
-    description: 'Increases the amount of $NILK processed from Raw Nilk.',
-    costRawNilk: 500,
-    costNilk: 250,
-    durationHours: 1,
-    image: '/gallonjug.png',
-    effectDescription: '+10% $NILK from processing',
+  'flask_of_swift_harvest': {
+    name: 'Flask of Swift Harvest',
+    description: 'Reduces harvest cooldowns for all owned cows.',
+    costRawNilk: 500, // Reduced cost for better 2-month gameplay
+    costNilk: 15, // Reduced catalysis fee
+    durationHours: 2,
+    image: '/smalljar.png', // Using small jar for swift harvest
+    effectDescription: 'Harvest cooldowns reduced by 20%',
+    cooldownReductionPercent: 20,
   },
-  'FUSION_FLUX': {
-    name: 'Fusion-Flux Flask',
-    description: 'Reduces the $NILK cost of performing a cow fusion.',
-    costRawNilk: 500,
-    costNilk: 250,
-    durationHours: 1,
-    image: '/smalljar.png',
-    effectDescription: '20% discount on fusion cost',
+  'flask_of_bountiful_yield': {
+    name: 'Flask of Bountiful Yield',
+    description: 'Increases the Raw Nilk per day for ALL owned cows.',
+    costRawNilk: 750, // Reduced cost for better 2-month gameplay
+    costNilk: 25, // Reduced catalysis fee
+    durationHours: 4,
+    image: '/gallonjug.png', // Using gallon jug for bountiful yield (bigger container)
+    effectDescription: 'All Raw Nilk production +10%',
+    yieldBoostPercent: 10,
   },
-  'CHRONO_CONDENSATE': {
-    name: 'Chrono-Condensate',
-    description: 'Boosts the passive generation rate of Raw Nilk for all cows.',
-    costRawNilk: 1000,
-    costNilk: 500,
-    durationHours: 1,
-    image: '/nilk crate.png',
-    effectDescription: '+50% passive Raw Nilk generation',
+  'flask_of_efficient_processing': {
+    name: 'Flask of Efficient Processing',
+    description: 'Reduces the processing fee for your next conversion.',
+    costRawNilk: 400, // Reduced cost for better 2-month gameplay
+    costNilk: 20, // Reduced catalysis fee
+    durationHours: 0, // Instant use, but we can give it a short expiry for UI purposes, e.g., 1 hour
+    image: '/nilk crate.png', // Using nilk crate for highest tier flask
+    effectDescription: 'Processing fee reduced by 3% on next batch',
+    processingFeeReduction: 3, // Stored as absolute percentage points
   },
 };
-// --- End Flask Definitions ---
 
 export interface UpgradeItem {
   id: string;
@@ -240,7 +251,7 @@ const initialMarketItems: UpgradeItem[] = [
       currency: '$NILK',
       category: 'machines',
       stats: { 'Conversion Rate': '35%', 'Processing Fee': '8%', 'Speed': 'Moderate' },
-      isUniquePurchase: true,
+      isUniquePurchase: false,
     },
     {
       id: 'buy_pro_machine',
@@ -251,42 +262,42 @@ const initialMarketItems: UpgradeItem[] = [
       currency: '$NILK',
       category: 'machines',
       stats: { 'Conversion Rate': '45%', 'Processing Fee': '4%', 'Speed': 'Fast' },
-      isUniquePurchase: true,
-    },
-    {
-      id: 'YIELD_BOOST',
-      name: FLASK_STATS.YIELD_BOOST.name,
-      description: FLASK_STATS.YIELD_BOOST.description,
-      image: FLASK_STATS.YIELD_BOOST.image,
-      cost: FLASK_STATS.YIELD_BOOST.costNilk,
-      costRawNilk: FLASK_STATS.YIELD_BOOST.costRawNilk,
-      currency: 'Raw Nilk',
-      category: 'flasks',
-      stats: { 'Effect': FLASK_STATS.YIELD_BOOST.effectDescription, 'Duration': `${FLASK_STATS.YIELD_BOOST.durationHours} hours` },
       isUniquePurchase: false,
     },
     {
-      id: 'CHRONO_CONDENSATE',
-      name: FLASK_STATS.CHRONO_CONDENSATE.name,
-      description: FLASK_STATS.CHRONO_CONDENSATE.description,
-      image: FLASK_STATS.CHRONO_CONDENSATE.image,
-      cost: FLASK_STATS.CHRONO_CONDENSATE.costNilk,
-      costRawNilk: FLASK_STATS.CHRONO_CONDENSATE.costRawNilk,
-      currency: 'Raw Nilk',
+      id: 'flask_of_bountiful_yield',
+      name: FLASK_STATS.flask_of_bountiful_yield.name,
+      description: FLASK_STATS.flask_of_bountiful_yield.description,
+      image: FLASK_STATS.flask_of_bountiful_yield.image,
+      cost: FLASK_STATS.flask_of_bountiful_yield.costNilk,
+      costRawNilk: FLASK_STATS.flask_of_bountiful_yield.costRawNilk,
+      currency: 'Raw Nilk', // Primary cost is Raw Nilk
       category: 'flasks',
-      stats: { 'Effect': FLASK_STATS.CHRONO_CONDENSATE.effectDescription, 'Duration': `${FLASK_STATS.CHRONO_CONDENSATE.durationHours} hours` },
+      stats: { 'Effect': FLASK_STATS.flask_of_bountiful_yield.effectDescription, 'Duration': `${FLASK_STATS.flask_of_bountiful_yield.durationHours} hours` },
       isUniquePurchase: false,
     },
     {
-      id: 'FUSION_FLUX',
-      name: FLASK_STATS.FUSION_FLUX.name,
-      description: FLASK_STATS.FUSION_FLUX.description,
-      image: FLASK_STATS.FUSION_FLUX.image,
-      cost: FLASK_STATS.FUSION_FLUX.costNilk,
-      costRawNilk: FLASK_STATS.FUSION_FLUX.costRawNilk,
+      id: 'flask_of_swift_harvest',
+      name: FLASK_STATS.flask_of_swift_harvest.name,
+      description: FLASK_STATS.flask_of_swift_harvest.description,
+      image: FLASK_STATS.flask_of_swift_harvest.image,
+      cost: FLASK_STATS.flask_of_swift_harvest.costNilk,
+      costRawNilk: FLASK_STATS.flask_of_swift_harvest.costRawNilk,
       currency: 'Raw Nilk',
       category: 'flasks',
-      stats: { 'Effect': FLASK_STATS.FUSION_FLUX.effectDescription, 'Duration': `${FLASK_STATS.FUSION_FLUX.durationHours} hour` },
+      stats: { 'Effect': FLASK_STATS.flask_of_swift_harvest.effectDescription, 'Duration': `${FLASK_STATS.flask_of_swift_harvest.durationHours} hours` },
+      isUniquePurchase: false,
+    },
+    {
+      id: 'flask_of_efficient_processing',
+      name: FLASK_STATS.flask_of_efficient_processing.name,
+      description: FLASK_STATS.flask_of_efficient_processing.description,
+      image: FLASK_STATS.flask_of_efficient_processing.image,
+      cost: FLASK_STATS.flask_of_efficient_processing.costNilk,
+      costRawNilk: FLASK_STATS.flask_of_efficient_processing.costRawNilk,
+      currency: 'Raw Nilk',
+      category: 'flasks',
+      stats: { 'Effect': FLASK_STATS.flask_of_efficient_processing.effectDescription, 'Duration': 'Next Process' },
       isUniquePurchase: false,
     },
     {
@@ -429,8 +440,7 @@ export interface GameState {
   hasMoofiBadge: boolean;
   hasAlienFarmerBoost: boolean;
   hasFlaskBlueprint: boolean; // NEW: Flask crafting ability
-  activeFlask: ActiveFlask | null;
-  flaskInventory: FlaskId[];
+  activeFlask: ActiveFlask | null; // Replaces activeConsumable
   marketItems: UpgradeItem[];
   
   // NEW: Dynamic pricing state
@@ -504,8 +514,7 @@ export interface GameActions {
   purchaseFlaskBlueprint: () => boolean;
   
   // Flask Actions
-  craftFlask: (flaskId: FlaskId) => Promise<boolean>;
-  activateFlask: (flaskType: FlaskId) => Promise<boolean>;
+  craftFlask: (flaskId: FlaskId) => boolean;
   clearExpiredFlask: () => void;
 
   // Marketplace Action
@@ -538,9 +547,6 @@ export interface GameActions {
   updateHYPEPrice: (price: number) => void;
   calculateDynamicHYPEPrice: (nilkAmount: number) => number;
   updateNilkUSDEstimate: (usdValue: number) => void;
-
-  fetchAndSyncState: () => Promise<void>;
-  reset: () => void;
 }
 
 interface GameStore extends GameState {
@@ -567,66 +573,75 @@ const calculateCowProduction = (cow: Cow, yieldBoosterLevel: number, hasAlienFar
 
 const useGameStore = create<GameStore>()(
   persist(
-    (set, get) => {
-      const initialState = {
-        userNilkBalance: 0,
-        userRawNilkBalance: 50,
-        userHypeBalance: 0,
-        treasuryBalance: 100000000,
-        treasuryHypeBalance: 500000,
+    (set, get) => ({
+      userNilkBalance: 50000, // BOOSTED starting balance for 2-month cycle
+      userRawNilkBalance: 5000,
+      userHypeBalance: 100, // Starting HYPE balance for testing
+      treasuryBalance: 1000000,
+      treasuryHypeBalance: 10000, // Treasury HYPE for rewards and marketplace
   ownedMachines: { standard: 0, pro: 0 },
   ownedCows: [],
   yieldBoosterLevel: 0,
   nextCowId: 1,
-        lastGlobalHarvestTime: Date.now(),
+  lastGlobalHarvestTime: 0,
   hasMoofiBadge: false,
   hasAlienFarmerBoost: false,
-        hasFlaskBlueprint: false,
+  hasFlaskBlueprint: false, // NEW: Flask crafting ability
   activeFlask: null,
-        flaskInventory: [],
       marketItems: initialMarketItems,
+      
+      // NEW: Dynamic pricing state
       dynamicPricing: {
         hyePrice: 42,
-          lastPriceUpdate: 0,
-          estimatedNilkUSD: 0,
+        lastPriceUpdate: Date.now(),
+        estimatedNilkUSD: 0, // Estimated $NILK value in USD
       },
+      
+      // NEW: Enhanced Liquidity Mining System
       liquidityPools: {
         nilkHype: {
           userLpTokens: 0,
-            totalLpTokens: 0,
-            nilkReserve: 0,
-            hypeReserve: 0,
+          totalLpTokens: 1000000, // Initial pool size
+          nilkReserve: 500000, // Initial NILK in pool
+          hypeReserve: 1000, // Initial HYPE in pool (500:1 ratio)
           rewardsAccumulated: 0,
-            lastRewardTime: 0,
-            tradingFeeRate: 0.3,
+          lastRewardTime: Date.now(),
+          tradingFeeRate: 0.003, // 0.3% trading fee
           totalFeesCollected: 0,
         },
       },
+      
+      // NEW: Achievement-based HYPE rewards
       hypeRewards: {
         dailyProcessingBonus: 0,
         fusionMilestones: 0,
         liquidityMilestones: 0,
         lastDailyRewardClaim: 0,
       },
+      
+      // Profile data
       userProfile: {
         username: null,
         avatarUrl: null,
         xHandle: null,
         isProfileComplete: false,
       },
-      };
+      
+      // Real-time and sync state (not persisted)
+      autoSaveIntervalId: undefined,
+      accumulationIntervalId: undefined,
 
-      const actions = {
-        increaseNilkBalance: (amount: number) => set((state) => ({ userNilkBalance: state.userNilkBalance + amount })),
-        decreaseNilkBalance: (amount: number) => set((state) => ({ userNilkBalance: Math.max(0, state.userNilkBalance - amount) })),
-        setNilkBalance: (amount: number) => set((state) => ({ userNilkBalance: amount })),
-        increaseRawNilkBalance: (amount: number) => set((state) => ({ userRawNilkBalance: state.userRawNilkBalance + amount })),
-        decreaseRawNilkBalance: (amount: number) => set((state) => ({ userRawNilkBalance: Math.max(0, state.userRawNilkBalance - amount) })),
-        setRawNilkBalance: (amount: number) => set((state) => ({ userRawNilkBalance: amount })),
-        increaseHypeBalance: (amount: number) => set((state) => ({ userHypeBalance: state.userHypeBalance + amount })),
-        decreaseHypeBalance: (amount: number) => set((state) => ({ userHypeBalance: Math.max(0, state.userHypeBalance - amount) })),
-        setHypeBalance: (amount: number) => set((state) => ({ userHypeBalance: amount })),
-        increaseTreasuryBalance: (amount: number) => set((state) => ({ treasuryBalance: state.treasuryBalance + amount })),
+  actions: {
+    increaseNilkBalance: (amount) => set((state) => ({ userNilkBalance: state.userNilkBalance + amount })),
+    decreaseNilkBalance: (amount) => set((state) => ({ userNilkBalance: Math.max(0, state.userNilkBalance - amount) })),
+    setNilkBalance: (amount) => set((state) => ({ userNilkBalance: amount })),
+    increaseRawNilkBalance: (amount) => set((state) => ({ userRawNilkBalance: state.userRawNilkBalance + amount })),
+    decreaseRawNilkBalance: (amount) => set((state) => ({ userRawNilkBalance: Math.max(0, state.userRawNilkBalance - amount) })),
+    setRawNilkBalance: (amount) => set((state) => ({ userRawNilkBalance: amount })),
+    increaseHypeBalance: (amount) => set((state) => ({ userHypeBalance: state.userHypeBalance + amount })),
+    decreaseHypeBalance: (amount) => set((state) => ({ userHypeBalance: Math.max(0, state.userHypeBalance - amount) })),
+    setHypeBalance: (amount) => set((state) => ({ userHypeBalance: amount })),
+    increaseTreasuryBalance: (amount) => set((state) => ({ treasuryBalance: state.treasuryBalance + amount })),
     
     addOwnedMachine: (machineId) => {
       set((state) => ({
@@ -935,78 +950,63 @@ const useGameStore = create<GameStore>()(
       return true;
     },
 
-            craftFlask: async (flaskId: FlaskId): Promise<boolean> => {
-              if (!get().hasFlaskBlueprint) {
-                console.error("Attempted to craft flask without blueprint.");
-                return false;
-              }
-              
-              const { data: { user } } = await supabase.auth.getUser();
-              if (!user) {
-                console.error("User not logged in for crafting");
-                return false;
-              }
+    // --- Flask (Consumable) Actions ---
+    craftFlask: (flaskId) => {
+      const flaskToCraft = FLASK_STATS[flaskId];
+      if (!flaskToCraft) return false;
 
-              try {
-                const { error } = await supabase.functions.invoke('track-event', {
-                    body: {
-                        eventType: 'CRAFT_FLASK',
-                        userId: user.id,
-                        data: { flaskType: flaskId }
-                    }
-                });
+      const { userNilkBalance, userRawNilkBalance } = get();
 
-                if (error) throw new Error(`Failed to craft flask: ${error.message}`);
-
-                // Success, sync state
-                await get().actions.fetchAndSyncState();
-                return true;
-              } catch(e) {
-                console.error(e);
+      if (userNilkBalance < flaskToCraft.costNilk) {
+        console.error("Not enough $NILK to craft flask.");
         return false;
       }
-        },
-
-        activateFlask: async (flaskType: FlaskId): Promise<boolean> => {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) {
-                console.error("User not logged in");
+      if (userRawNilkBalance < flaskToCraft.costRawNilk) {
+        console.error("Not enough Raw Nilk to craft flask.");
         return false;
       }
 
-            try {
-                const { error } = await supabase.functions.invoke('track-event', {
-                    body: {
-                        eventType: 'ACTIVATE_FLASK',
-                        userId: user.id,
-                        data: { flaskType }
-                    }
-                });
+      // Deduct costs and send $NILK fee to treasury
+      get().actions.decreaseNilkBalance(flaskToCraft.costNilk);
+      get().actions.decreaseRawNilkBalance(flaskToCraft.costRawNilk);
+      get().actions.increaseTreasuryBalance(flaskToCraft.costNilk);
 
-                if (error) {
-                    throw new Error(`Failed to activate flask: ${error.message}`);
-                }
+      // Set the active flask buff
+      const expiryTime = Date.now() + flaskToCraft.durationHours * 60 * 60 * 1000;
+      set({ 
+        activeFlask: {
+          id: flaskId,
+          name: flaskToCraft.name,
+          expiryTime: expiryTime,
+          effectDescription: flaskToCraft.effectDescription,
+          cooldownReductionPercent: flaskToCraft.cooldownReductionPercent,
+          yieldBoostPercent: flaskToCraft.yieldBoostPercent,
+          processingFeeReduction: flaskToCraft.processingFeeReduction,
+        }
+      });
+      
+      // If it's a yield-boosting flask, update cow production rates immediately
+      if (flaskToCraft.yieldBoostPercent) {
+        get().actions.updateCowProductionRates();
+      }
 
-                // Success, sync state
-                await get().actions.fetchAndSyncState();
       return true;
-
-            } catch (e) {
-                console.error(e);
-                return false;
-            }
     },
 
     clearExpiredFlask: () => {
       const { activeFlask } = get();
-          if (activeFlask && Date.now() > activeFlask.expiresAt) {
+      if (activeFlask && Date.now() > activeFlask.expiryTime) {
+        const hadYieldBoost = !!activeFlask.yieldBoostPercent;
         set({ activeFlask: null });
-            // The backend handles clearing the flask on the next event, 
-            // so this is just a client-side cleanup for responsiveness.
-          }
-        },
+        // If the expired flask was a yield booster, we must recalculate cow production rates
+        if (hadYieldBoost) {
+          get().actions.updateCowProductionRates();
+        }
+      }
+    },
 
-        processRawNilk: (amountToConvert: number): boolean => {
+    // --- Processing ---
+    processRawNilk: (amountToConvert) => {
       // This is a placeholder, full logic is in ProcessingPage.tsx
       console.warn("[Store processRawNilk] This action is basic and likely outdated. Ensure app/processing/page.tsx is used for correct machine-based processing.");
       
@@ -1034,7 +1034,7 @@ const useGameStore = create<GameStore>()(
       return true; // Ensure boolean is returned
     },
 
-        purchaseMarketItem: (itemId: string, quantity: number): boolean => {
+        purchaseMarketItem: (itemId, quantity) => {
           const item = get().marketItems.find(i => i.id === itemId);
           if (!item) {
             console.error(`[purchaseMarketItem] Item with id ${itemId} not found.`);
@@ -1129,48 +1129,18 @@ const useGameStore = create<GameStore>()(
           return true;
         },
 
-        fetchAndSyncState: async () => {
-          const { data: { user } } = await supabase.auth.getUser();
-          if (!user) {
-            console.log("No user logged in, cannot fetch state.");
-            return;
-          }
-          const { data, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', user.id)
-            .single();
-
-          if (error) {
-            console.error("Error fetching user profile:", error);
-          } else if (data) {
-            get().actions.syncStateFromSupabase(data);
-          }
-        },
-        
+         // Database Sync Actions
      syncStateFromSupabase: (supabaseState: any) => {
-          set({
-            userNilkBalance: supabaseState.nilk_balance ?? 0,
-            userRawNilkBalance: supabaseState.raw_nilk_balance ?? 0,
-            userHypeBalance: supabaseState.hype_balance ?? 0,
-            ownedMachines: supabaseState.owned_machines ?? { standard: 0, pro: 0 },
-            ownedCows: supabaseState.cow_inventory ?? [],
-            yieldBoosterLevel: supabaseState.yield_booster_level ?? 0,
-            hasMoofiBadge: supabaseState.has_moofi_badge ?? false,
-            hasAlienFarmerBoost: supabaseState.has_alien_farmer_boost ?? false,
-            hasFlaskBlueprint: supabaseState.has_flask_blueprint ?? false,
-            flaskInventory: supabaseState.flask_inventory ?? [],
-            activeFlask: supabaseState.active_flask 
-                ? { id: supabaseState.active_flask, expiresAt: new Date(supabaseState.active_flask_expires_at).getTime() } 
-                : null,
-            userProfile: {
-              username: supabaseState.username,
-              avatarUrl: supabaseState.avatar_url,
-              xHandle: supabaseState.x_handle,
-              isProfileComplete: supabaseState.is_profile_complete,
-            },
-            raw_nilk_generation_rate: supabaseState.raw_nilk_generation_rate,
-          });
+       set((state) => ({
+         ...state,
+         userNilkBalance: supabaseState.userNilkBalance ?? state.userNilkBalance,
+         userRawNilkBalance: supabaseState.userRawNilkBalance ?? state.userRawNilkBalance,
+         ownedCows: supabaseState.ownedCows ?? state.ownedCows,
+         ownedMachines: supabaseState.ownedMachines ?? state.ownedMachines,
+         yieldBoosterLevel: supabaseState.yieldBoosterLevel ?? state.yieldBoosterLevel,
+         hasMoofiBadge: supabaseState.hasMoofiBadge ?? state.hasMoofiBadge,
+         hasAlienFarmerBoost: supabaseState.hasAlienFarmerBoost ?? state.hasAlienFarmerBoost,
+       }));
        // Update cow production rates after sync
        get().actions.updateCowProductionRates();
        
@@ -1233,6 +1203,99 @@ const useGameStore = create<GameStore>()(
        }
      },
 
+     _simulateAccumulation: (deltaTimeSeconds: number) => {
+       // Simulate Raw Nilk accumulation for all cows
+       set(state => {
+         const updatedCows = state.ownedCows.map(cow => {
+           const rawNilkPerSecond = cow.currentRawNilkPerDay / (24 * 60 * 60);
+           const newAccumulation = cow.accumulatedRawNilk + (rawNilkPerSecond * deltaTimeSeconds);
+           return { ...cow, accumulatedRawNilk: parseFloat(newAccumulation.toFixed(2)) };
+         });
+         return { ...state, ownedCows: updatedCows };
+       });
+       
+       // Update liquidity rewards
+       get().actions.calculateLiquidityRewards();
+     },
+
+     // Liquidity Mining Actions
+     addLiquidity: (nilkAmount: number, hypeAmount: number) => {
+       const state = get();
+       const pool = state.liquidityPools.nilkHype;
+       
+       // Check if user has enough tokens
+       if (state.userNilkBalance < nilkAmount || state.userHypeBalance < hypeAmount) {
+         console.error('[addLiquidity] Insufficient balance');
+         return false;
+       }
+       
+       // Calculate LP tokens to mint (using geometric mean for first liquidity)
+       let lpTokensToMint: number;
+       if (pool.totalLpTokens === 0) {
+         lpTokensToMint = Math.sqrt(nilkAmount * hypeAmount);
+       } else {
+         // Proportional to existing pool
+         const nilkShare = nilkAmount / pool.nilkReserve;
+         const hypeShare = hypeAmount / pool.hypeReserve;
+         const minShare = Math.min(nilkShare, hypeShare);
+         lpTokensToMint = minShare * pool.totalLpTokens;
+       }
+       
+       // Update state
+       set((prevState) => ({
+         userNilkBalance: prevState.userNilkBalance - nilkAmount,
+         userHypeBalance: prevState.userHypeBalance - hypeAmount,
+         liquidityPools: {
+           nilkHype: {
+             ...prevState.liquidityPools.nilkHype,
+             userLpTokens: prevState.liquidityPools.nilkHype.userLpTokens + lpTokensToMint,
+             totalLpTokens: prevState.liquidityPools.nilkHype.totalLpTokens + lpTokensToMint,
+             nilkReserve: prevState.liquidityPools.nilkHype.nilkReserve + nilkAmount,
+             hypeReserve: prevState.liquidityPools.nilkHype.hypeReserve + hypeAmount,
+           },
+         },
+       }));
+       
+       console.log(`[addLiquidity] Added ${nilkAmount} NILK + ${hypeAmount} HYPE, received ${lpTokensToMint.toFixed(2)} LP tokens`);
+       return true;
+     },
+
+     removeLiquidity: (lpTokenAmount: number) => {
+       const state = get();
+       const pool = state.liquidityPools.nilkHype;
+       
+       if (pool.userLpTokens < lpTokenAmount) {
+         console.error('[removeLiquidity] Insufficient LP tokens');
+         return false;
+       }
+       
+       // Calculate proportional withdrawal
+       const share = lpTokenAmount / pool.totalLpTokens;
+       const nilkToWithdraw = share * pool.nilkReserve;
+       const hypeToWithdraw = share * pool.hypeReserve;
+       
+       // Claim any pending rewards first
+       get().actions.claimLiquidityRewards();
+       
+       // Update state
+       set((prevState) => ({
+         userNilkBalance: prevState.userNilkBalance + nilkToWithdraw,
+         userHypeBalance: prevState.userHypeBalance + hypeToWithdraw,
+         liquidityPools: {
+           nilkHype: {
+             ...prevState.liquidityPools.nilkHype,
+             userLpTokens: prevState.liquidityPools.nilkHype.userLpTokens - lpTokenAmount,
+             totalLpTokens: prevState.liquidityPools.nilkHype.totalLpTokens - lpTokenAmount,
+             nilkReserve: prevState.liquidityPools.nilkHype.nilkReserve - nilkToWithdraw,
+             hypeReserve: prevState.liquidityPools.nilkHype.hypeReserve - hypeToWithdraw,
+           },
+         },
+       }));
+       
+       console.log(`[removeLiquidity] Removed ${lpTokenAmount.toFixed(2)} LP tokens, received ${nilkToWithdraw.toFixed(2)} NILK + ${hypeToWithdraw.toFixed(2)} HYPE`);
+       return true;
+     },
+
      calculateLiquidityRewards: () => {
        const state = get();
        const pool = state.liquidityPools.nilkHype;
@@ -1279,6 +1342,7 @@ const useGameStore = create<GameStore>()(
        return newRewards;
      },
 
+     // Profile Actions
      updateProfile: (profileData: { username?: string; avatarUrl?: string; xHandle?: string }) => {
        set((state) => ({
          userProfile: {
@@ -1313,6 +1377,7 @@ const useGameStore = create<GameStore>()(
        }));
      },
 
+     // Dynamic Pricing Actions
      updateHYPEPrice: (price: number) => {
        set((state) => ({
          dynamicPricing: {
@@ -1337,15 +1402,8 @@ const useGameStore = create<GameStore>()(
          },
        }));
      },
-
-     reset: () => set(initialState),
-  };
-
-  return {
-    ...initialState,
-    actions,
-  };
-},
+  }
+}),
 {
   name: 'nilk-game-storage', // name of the item in the storage (must be unique)
   storage: createJSONStorage(() => localStorage), // (optional) by default, 'localStorage' is used
@@ -1358,5 +1416,9 @@ const useGameStore = create<GameStore>()(
 );
 
 export const useGameActions = () => useGameStore((state) => state.actions);
+
+// You might want to add selectors for derived data, e.g.:
+// export const selectTotalRawNilkProductionPerDay = (state: GameState) => 
+//   state.ownedCows.reduce((total, cow) => total + cow.currentRawNilkPerDay, 0);
 
 export default useGameStore; 

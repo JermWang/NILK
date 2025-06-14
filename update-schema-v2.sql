@@ -103,25 +103,32 @@ $$;
 
 -- 5. Update the get_leaderboard function to use the new stats table
 CREATE OR REPLACE FUNCTION public.get_leaderboard()
-RETURNS TABLE(user_id uuid, username text, raw_nilk_processed bigint, fusion_count int, total_hype_earned bigint, rank int)
+RETURNS TABLE (
+  rank bigint,
+  wallet_address text,
+  username text,
+  raw_nilk_processed float8,
+  hype_earned float8,
+  fusion_count int4
+)
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    RETURN QUERY
-    SELECT
-        us.user_id,
-        p.username,
-        us.raw_nilk_processed,
-        us.fusion_count,
-        us.total_hype_earned,
-        CAST(RANK() OVER (ORDER BY us.raw_nilk_processed DESC, us.fusion_count DESC, us.total_hype_earned DESC) AS INT) as rank
-    FROM
-        public.user_stats us
-    JOIN
-        public.profiles p ON us.user_id = p.id
-    ORDER BY
-        rank
-    LIMIT 100;
+  RETURN QUERY
+  SELECT
+    RANK() OVER (ORDER BY s.raw_nilk_processed DESC, s.hype_earned DESC) as rank,
+    p.wallet_address,
+    p.username,
+    s.raw_nilk_processed,
+    s.hype_earned,
+    s.fusion_count
+  FROM
+    public.user_stats s
+  JOIN
+    public.profiles p ON s.user_id = p.id
+  ORDER BY
+    rank
+  LIMIT 100; -- Limit to top 100 players for performance
 END;
 $$;
 
@@ -158,141 +165,4 @@ $$;
 
 -- Note: The trigger on auth.users for handle_new_user is already in schema.sql.
 -- Re-applying it here is not necessary unless the original schema is not run first.
-
--- Add new columns to profiles table for active flask management
-ALTER TABLE public.profiles
-ADD COLUMN IF NOT EXISTS active_flask TEXT,
-ADD COLUMN IF NOT EXISTS active_flask_expires_at TIMESTAMPTZ,
-ADD COLUMN IF NOT EXISTS base_raw_nilk_generation_rate FLOAT8 DEFAULT 1.0,
-ADD COLUMN IF NOT EXISTS raw_nilk_generation_rate FLOAT8 DEFAULT 1.0,
-ADD COLUMN IF NOT EXISTS last_active_timestamp TIMESTAMPTZ;
-
--- Drop the existing function to ensure it's updated
-DROP FUNCTION IF EXISTS public.get_leaderboard();
-
--- New function for economic summary
-CREATE OR REPLACE FUNCTION public.get_economic_summary()
-RETURNS json
-LANGUAGE plpgsql
-AS $$
-DECLARE
-    summary json;
-BEGIN
-    SELECT json_build_object(
-        'total_events', (SELECT COUNT(*) FROM public.economic_events),
-        'nilk_minted', (SELECT COALESCE(SUM(amount), 0) FROM public.economic_events WHERE event_type = 'MINT_NILK'),
-        'nilk_burned_fusion', (SELECT COALESCE(SUM(amount), 0) FROM public.economic_events WHERE event_type = 'BURN_NILK_FUSION'),
-        'nilk_burned_crafting', (SELECT COALESCE(SUM(amount), 0) FROM public.economic_events WHERE event_type = 'CRAFT_ITEM'),
-        'total_hype_earned', (SELECT COALESCE(SUM(amount), 0) FROM public.economic_events WHERE event_type = 'EARN_HYPE'),
-        'fusion_events', (SELECT COUNT(*) FROM public.economic_events WHERE event_type = 'BURN_NILK_FUSION'),
-        'crafting_events', (SELECT COUNT(*) FROM public.economic_events WHERE event_type = 'CRAFT_ITEM'),
-        'events_timeseries', (
-            SELECT json_agg(t)
-            FROM (
-                SELECT
-                    date_trunc('day', created_at) as date,
-                    event_type,
-                    COUNT(*) as count
-                FROM public.economic_events
-                GROUP BY date_trunc('day', created_at), event_type
-                ORDER BY date_trunc('day', created_at) ASC
-            ) t
-        )
-    ) INTO summary;
-
-    RETURN summary;
-END;
-$$;
-
--- #################################################################
--- ### ROW LEVEL SECURITY (RLS) POLICIES - CRITICAL SECURITY FIX ###
--- #################################################################
-
--- Step 1: Enable RLS on all relevant tables.
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.user_stats ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.economic_events ENABLE ROW LEVEL SECURITY;
-
--- Remove old, insecure RLS-disabling commands if they exist from schema.sql
--- This is defensive programming; these ALTER TABLE commands will fail if RLS is already enabled, which is fine.
--- But we want to ensure any DISABLE commands are superseded.
--- The following commands are commented out because we are simply enabling above.
--- ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-
--- Step 2: Create policies for the 'profiles' table.
-DROP POLICY IF EXISTS "Enable read access for users on their own profile" ON public.profiles;
-CREATE POLICY "Enable read access for users on their own profile"
-ON public.profiles
-FOR SELECT
-USING (auth.uid() = id);
-
-DROP POLICY IF EXISTS "Enable update access for users on their own profile" ON public.profiles;
-CREATE POLICY "Enable update access for users on their own profile"
-ON public.profiles
-FOR UPDATE
-USING (auth.uid() = id)
-WITH CHECK (auth.uid() = id);
-
--- Step 3: Create policies for the 'user_stats' table.
-DROP POLICY IF EXISTS "Enable read access for users on their own stats" ON public.user_stats;
-CREATE POLICY "Enable read access for users on their own stats"
-ON public.user_stats
-FOR SELECT
-USING (auth.uid() = user_id);
-
--- Step 4: Create policies for the 'economic_events' table.
-DROP POLICY IF EXISTS "Enable read access for users on their own economic events" ON public.economic_events;
-CREATE POLICY "Enable read access for users on their own economic events"
-ON public.economic_events
-FOR SELECT
-USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Deny client-side inserts on economic_events" ON public.economic_events;
-CREATE POLICY "Deny client-side inserts on economic_events"
-ON public.economic_events
-FOR INSERT
-WITH CHECK (false);
-
-DROP POLICY IF EXISTS "Deny client-side updates on economic_events" ON public.economic_events;
-CREATE POLICY "Deny client-side updates on economic_events"
-ON public.economic_events
-FOR UPDATE
-USING (false);
-
-DROP POLICY IF EXISTS "Deny client-side deletes on economic_events" ON public.economic_events;
-CREATE POLICY "Deny client-side deletes on economic_events"
-ON public.economic_events
-FOR DELETE
-USING (false);
-
--- Step 5: Secure public-facing functions
-DROP FUNCTION IF EXISTS public.get_leaderboard();
-CREATE OR REPLACE FUNCTION public.get_leaderboard()
-RETURNS TABLE(rank bigint, username text, raw_nilk_processed numeric, fusions integer, hype_earned numeric)
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-    RETURN QUERY
-    SELECT
-        CAST(RANK() OVER (ORDER BY us.raw_nilk_processed DESC, us.fusions DESC, us.hype_earned DESC) AS BIGINT) as rank,
-        p.username,
-        us.raw_nilk_processed,
-        us.fusions,
-        us.hype_earned
-    FROM
-        public.user_stats us
-    JOIN
-        public.profiles p ON us.user_id = p.id
-    ORDER BY
-        rank
-    LIMIT 100;
-END;
-$$;
-GRANT EXECUTE ON FUNCTION public.get_leaderboard() TO authenticated;
-
-REVOKE EXECUTE ON FUNCTION public.get_economic_summary() FROM public, authenticated, anon;
-
-
-COMMIT;
+ 

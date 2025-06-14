@@ -4,9 +4,10 @@ import Link from "next/link";
 import Image from "next/image";
 import { useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { Tractor, Factory, Combine, Info, UserCircle, Coins } from "lucide-react";
+import { Tractor, Factory, Combine, Info, Coins, FlaskConical, Trophy, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import WalletConnection from "@/app/components/WalletConnection";
 import ProfileModal from "@/app/components/ProfileModal";
 import MusicWidget from "@/app/components/layout/MusicWidget";
@@ -14,6 +15,17 @@ import PriceTicker from "@/app/components/layout/PriceTicker";
 import useGameStore from "@/app/store/useGameStore";
 import { useAccount } from 'wagmi';
 import { shallow } from 'zustand/shallow';
+
+const gameLinks = [
+  { href: '/farm', label: 'Farm', icon: Tractor },
+  { href: '/processing', label: 'Nilk Factory', icon: Factory },
+  { href: '/crafting', label: 'Crafting', icon: FlaskConical },
+  { href: '/fusion', label: 'Fusion', icon: Combine },
+];
+
+const defiLinks = [
+    { href: '/liquidity', label: 'Liquidity Pools', icon: Coins },
+];
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -55,28 +67,54 @@ export default function Navbar() {
           </Link>
           <div className="flex items-center space-x-1 sm:space-x-2 md:space-x-4">
             <Link href="/" legacyBehavior passHref>
-              <a className={`flex items-center px-2 py-1 sm:px-3 sm:py-2 rounded-md text-sm sm:text-base font-medium transition-colors duration-200 hover:text-lime-300 ${pathname === '/' ? 'text-lime-400 border-b-2 border-lime-400' : 'text-gray-300'}`}>
-                <Info className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" />Info
+              <a className={`font-title flex items-center px-2 py-1 sm:px-3 sm:py-2 rounded-md text-lg transition-colors duration-200 hover:text-lime-300 ${pathname === '/' ? 'text-lime-400' : 'text-gray-300'}`}>
+                <Info className="w-4 h-4 mr-1.5" />Info
               </a>
             </Link>
-            <Link href="/farm" legacyBehavior passHref>
-              <a className={`flex items-center px-2 py-1 sm:px-3 sm:py-2 rounded-md text-sm sm:text-base font-medium transition-colors duration-200 hover:text-lime-300 ${pathname === '/farm' ? 'text-lime-400 border-b-2 border-lime-400' : 'text-gray-300'}`}>
-                <Tractor className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" />Farm
-              </a>
-            </Link>
-            <Link href="/processing" legacyBehavior passHref>
-              <a className={`flex items-center px-2 py-1 sm:px-3 sm:py-2 rounded-md text-sm sm:text-base font-medium transition-colors duration-200 hover:text-lime-300 ${pathname === '/processing' ? 'text-lime-400 border-b-2 border-lime-400' : 'text-gray-300'}`}>
-                <Factory className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" />Nilk Factory
-              </a>
-            </Link>
-            <Link href="/fusion" legacyBehavior passHref>
-              <a className={`flex items-center px-2 py-1 sm:px-3 sm:py-2 rounded-md text-sm sm:text-base font-medium transition-colors duration-200 hover:text-lime-300 ${pathname === '/fusion' ? 'text-lime-400 border-b-2 border-lime-400' : 'text-gray-300'}`}>
-                <Combine className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" />Fusion
-              </a>
-            </Link>
-            <Link href="/liquidity" legacyBehavior passHref>
-              <a className={`flex items-center px-2 py-1 sm:px-3 sm:py-2 rounded-md text-sm sm:text-base font-medium transition-colors duration-200 hover:text-purple-300 ${pathname === '/liquidity' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-gray-300'}`}>
-                <Coins className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-1.5" />Liquidity
+
+            {/* Game Hub Dropdown */}
+            <Popover>
+                <PopoverTrigger asChild>
+                    <Button variant="ghost" className="font-title flex items-center space-x-1 text-lg hover:text-lime-300 text-gray-300 px-2 py-1 sm:px-3 sm:py-2">
+                        <span>Game Hub</span>
+                        <ChevronDown className="h-5 w-5" />
+                    </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56 bg-slate-900/95 border-lime-500/50 text-lime-200 p-2">
+                    <div className="grid gap-1">
+                        {gameLinks.map((link) => (
+                            <Link key={link.href} href={link.href} className={`flex items-center space-x-3 p-2 rounded-md hover:bg-lime-700/30 hover:text-lime-100 transition-colors ${pathname === link.href ? 'text-lime-300' : ''}`}>
+                                <link.icon className="h-5 w-5" />
+                                <span>{link.label}</span>
+                            </Link>
+                        ))}
+                    </div>
+                </PopoverContent>
+            </Popover>
+            
+            {/* DeFi Dropdown */}
+            <Popover>
+                <PopoverTrigger asChild>
+                    <Button variant="ghost" className="font-title flex items-center space-x-1 text-lg hover:text-purple-300 text-gray-300 px-2 py-1 sm:px-3 sm:py-2">
+                        <span>DeFi</span>
+                        <ChevronDown className="h-5 w-5" />
+                    </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56 bg-slate-900/95 border-purple-500/50 text-purple-200 p-2">
+                    <div className="grid gap-1">
+                        {defiLinks.map((link) => (
+                            <Link key={link.href} href={link.href} className={`flex items-center space-x-3 p-2 rounded-md hover:bg-purple-700/30 hover:text-purple-100 transition-colors ${pathname === link.href ? 'text-purple-300' : ''}`}>
+                                <link.icon className="h-5 w-5" />
+                                <span>{link.label}</span>
+                            </Link>
+                        ))}
+                    </div>
+                </PopoverContent>
+            </Popover>
+
+            <Link href="/leaderboard" legacyBehavior passHref>
+              <a className={`font-title flex items-center px-2 py-1 sm:px-3 sm:py-2 rounded-md text-lg transition-colors duration-200 hover:text-yellow-300 ${pathname === '/leaderboard' ? 'text-yellow-400' : 'text-gray-300'}`}>
+                <Trophy className="w-4 h-4 mr-1.5" />Leaderboard
               </a>
             </Link>
           </div>
@@ -125,4 +163,4 @@ export default function Navbar() {
       />
     </>
   );
-} 
+}

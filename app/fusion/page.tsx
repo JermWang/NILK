@@ -7,9 +7,6 @@ import { Coins, Package } from "lucide-react"; // Keep only used icons
 import useGameStore from "../store/useGameStore";
 // No shallow import needed for individual selectors
 import InteractiveFusionSection from "./components/InteractiveFusionSection"; // Still simplified
-import FusionIntro from './components/FusionIntro';
-import Header from '@/components/layout/Header';
-import Footer from '@/components/layout/Footer';
 
 // TODO: Create these components later
 // import CowList from "@/components/farm/CowList"; 
@@ -17,7 +14,7 @@ import Footer from '@/components/layout/Footer';
 // import FuseCowSection from "@/components/farm/FuseCowSection";
 // import YieldBoosterSection from "@/components/farm/YieldBoosterSection";
 
-const FusionPage = () => {
+export default function FusionPage() {
   // Select primitives individually
   const userNilkBalance = useGameStore(state => state.userNilkBalance);
   const userRawNilkBalance = useGameStore(state => state.userRawNilkBalance);
@@ -52,15 +49,40 @@ const FusionPage = () => {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-900 via-purple-900/50 to-gray-900 text-white">
-      <Header />
-      <main className="container mx-auto px-4 py-12 sm:py-16">
-        <FusionIntro />
+    <div className="container mx-auto p-4 min-h-screen flex flex-col text-foreground pt-40">
+      <main className="flex-grow">
+        {/* Balance Display - Enhanced Style with Neon Green */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div className={factoryCardStyle}>
+            <div className={factoryTitleStyle}>
+              <Coins className="w-7 h-7 mr-3 text-lime-400" />
+              $NILK Balance
+            </div>
+            <p className="text-4xl font-bold text-white">{(userNilkBalance || 0).toLocaleString()}</p>
+          </div>
+          <div className={factoryCardStyle}>
+            <div className={factoryTitleStyle}>
+              <Package className="w-7 h-7 mr-3 text-lime-400" />
+              Raw Nilk Balance
+            </div>
+            <p className="text-4xl font-bold text-white">{(userRawNilkBalance || 0).toLocaleString()}</p>
+          </div>
+        </div>
+
         <InteractiveFusionSection />
+        
+        {/* Placeholder Sections with updated style */}
+        <div className="space-y-6 mt-8">
+          <h2 className="text-3xl font-bold text-center text-lime-300 mb-6 font-orbitron">FARM MANAGEMENT</h2>
+          <PurchaseCowPlaceholder />
+          <CowListPlaceholder />
+          <YieldBoosterPlaceholder />
+        </div>
       </main>
-      <Footer />
+
+      <footer className="py-6 mt-8 text-center border-t border-lime-800/50">
+        <p className="text-sm text-lime-400/70">&copy; {new Date().getFullYear()} GOT NILK? - Cosmic Cow Farming</p>
+      </footer>
     </div>
   );
-};
-
-export default FusionPage; 
+} 

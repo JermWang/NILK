@@ -98,7 +98,7 @@ export default function LeaderboardPage() {
       </main>
 
        <footer className="py-6 mt-8 text-center border-t border-lime-800/50">
-        <p className="text-sm text-lime-400/70">&copy; {new Date().getFullYear()} Nilk - Rankings are updated periodically.</p>
+        <p className="text-sm text-lime-400/70">&copy; {new Date().getFullYear()} GOT NILK? - Rankings are updated periodically.</p>
       </footer>
     </div>
   );

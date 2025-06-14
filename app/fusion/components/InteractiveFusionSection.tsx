@@ -8,19 +8,6 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Atom, CheckCircle2, Sparkles, Loader2 } from 'lucide-react';
 
-const playSound = (soundFile: string) => {
-    try {
-        const audio = new Audio(soundFile);
-        audio.play().catch(error => {
-            // Autoplay was prevented, which is common in browsers.
-            // Log this for debugging but don't bother the user.
-            console.warn("Audio autoplay was prevented:", error);
-        });
-    } catch (error) {
-        console.error("Error playing sound:", error);
-    }
-};
-
 // Interface for displayed cows, similar to CowListItem in app/page.tsx
 interface DisplayCow extends StoreCow {
   // Already has id, tier, name, level, currentRawNilkPerDay, imageUrl from StoreCow
@@ -112,7 +99,7 @@ const InteractiveFusionSection = () => {
     setTimeout(() => { 
         setIsFusing(false);
         if (success) {
-            playSound("/sounds/sparkles.mp3");
+            // playSound("/sounds/sparkles.mp3"); // TODO: Implement sound
             setFusionMessage(`Fusion successful! You created a ${currentFusionDetails.resultName}.`);
             setSelectedCowsForFusion([]); 
         } else {

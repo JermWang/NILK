@@ -38,15 +38,12 @@ import * as THREE from "three"
 import { RepeatWrapping } from "three"
 import useGameStore, { useGameActions, COW_STATS, FLASK_STATS, ActiveFlask, FlaskId } from "../store/useGameStore"
 import { useErrorHandler, validators, antiCheat } from "../utils/errorHandling"
-import { shallow } from 'zustand/shallow';
 
 import type { GameActions, Cow as StoreCow, CowTier } from "../store/useGameStore"
 import Image from 'next/image'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { initialMarketItems, type UpgradeItem } from "@/app/config/marketItems"
 import Marketplace from "./components/Marketplace"
-import FlaskManager from "./components/FlaskManager"
-import FarmStatsPanel from "./components/FarmStatsPanel"
 
 // GLTF Model paths - These become fallbacks or defaults if not specified by tier
 const DEFAULT_COW_MODEL_PATH = "/MODELS/COW_optimized.glb";
@@ -639,61 +636,36 @@ interface GameStateFromStore {
 }
 
 export default function NilkFarm3D() {
-  const { address, isConnected, isConnecting } = useAccount();
-  const [isClient, setIsClient] = useState(false);
-  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
-  const [dialogContent, setDialogContent] = useState({ title: "", description: "", onConfirm: () => {} });
-  const [selectedUpgrade, setSelectedUpgrade] = useState<UpgradeItem | null>(null);
-  const [paymentCurrency, setPaymentCurrency] = useState<'$NILK' | 'Raw Nilk'>('$NILK');
+  const isConnected = useAccount().isConnected;
+  const { address } = useAccount()
+  const { handleError } = useErrorHandler();
 
-  const [isLoading, setIsLoading] = useState<Record<string, boolean>>({});
-
-  const [fusionCowOne, setFusionCowOne] = useState<string | null>(null);
-  const [fusionCowTwo, setFusionCowTwo] = useState<string | null>(null);
-
-  // Missing state variables
+  const [isMarketModalOpen, setIsMarketModalOpen] = useState(false);
+  const [itemToPurchase, setItemToPurchase] = useState<UpgradeItem | null>(null);
+  const [isConfirmingPurchase, setIsConfirmingPurchase] = useState(false);
+  
+  const [isCowFusionModalOpen, setIsCowFusionModalOpen] = useState(false)
+  const [selectedCowsForFusion, setSelectedCowsForFusion] = useState<string[]>([])
+  const sparkleContainerRef = useRef<HTMLDivElement>(null)
+  const [isLoadingNilkBalance, setIsLoadingNilkBalance] = useState(true)
+  const [isLoadingRawNilkBalance, setIsLoadingRawNilkBalance] = useState(true)
+  const [selectedMarketItem, setSelectedMarketItem] = useState<UpgradeItem | null>(null);
+  const [selectedQuantity, setSelectedQuantity] = useState(1);
+  const [finalPurchaseDetails, setFinalPurchaseDetails] = useState<{ item: UpgradeItem; quantity: number; totalPrice: number; currency: '$NILK' | 'Raw Nilk' } | null>(null);
   const [displayCowList, setDisplayCowList] = useState<CowListItem[]>([]);
   const [nextSpawnPointIndex, setNextSpawnPointIndex] = useState(0);
-  const [isLoadingNilkBalance, setIsLoadingNilkBalance] = useState(true);
-  const [isLoadingRawNilkBalance, setIsLoadingRawNilkBalance] = useState(true);
-  const [isMarketModalOpen, setIsMarketModalOpen] = useState(false);
-  const [isCowFusionModalOpen, setIsCowFusionModalOpen] = useState(false);
-  const [isConfirmingPurchase, setIsConfirmingPurchase] = useState(false);
-  const [itemToPurchase, setItemToPurchase] = useState<UpgradeItem | null>(null);
-  const [userHypeBalance, setUserHypeBalance] = useState(0);
-  
-  // Missing refs
-  const sparkleContainerRef = useRef<HTMLDivElement>(null);
 
-  // Zustand state selectors
-  const { 
-    userNilkBalance, 
-    userRawNilkBalance, 
-    ownedCows, 
-    ownedMachines, 
-    yieldBoosterLevel, 
-    hasMoofiBadge, 
-    hasAlienFarmerBoost, 
-    activeFlask, 
-    lastGlobalHarvestTime, 
-    hasFlaskBlueprint, 
-    flaskInventory
-  } = useGameStore(state => ({
-    userNilkBalance: state.userNilkBalance,
-    userRawNilkBalance: state.userRawNilkBalance,
-    ownedCows: state.ownedCows,
-    ownedMachines: state.ownedMachines,
-    yieldBoosterLevel: state.yieldBoosterLevel,
-    hasMoofiBadge: state.hasMoofiBadge,
-    hasAlienFarmerBoost: state.hasAlienFarmerBoost,
-    activeFlask: state.activeFlask,
-    lastGlobalHarvestTime: state.lastGlobalHarvestTime,
-    hasFlaskBlueprint: state.hasFlaskBlueprint,
-    flaskInventory: state.flaskInventory,
-  }), shallow);
+  // Use separate selectors to avoid shallow comparison issues
+  const userNilkBalance = useGameStore((state) => state.userNilkBalance);
+  const userRawNilkBalance = useGameStore((state) => state.userRawNilkBalance);
+  const userHypeBalance = useGameStore((state) => state.userHypeBalance);
+  const ownedCows = useGameStore((state) => state.ownedCows);
+  const hasAlienFarmerBoost = useGameStore((state) => state.hasAlienFarmerBoost);
+  const hasMoofiBadge = useGameStore((state) => state.hasMoofiBadge);
+  const yieldBoosterLevelFromStore = useGameStore((state) => state.yieldBoosterLevel);
+  const ownedMachines = useGameStore(state => state.ownedMachines);
 
   const actions = useGameActions();
-  const { handleError, renderError } = useErrorHandler();
 
   useEffect(() => {
     if (userNilkBalance !== undefined && userNilkBalance !== null) {
@@ -828,13 +800,13 @@ export default function NilkFarm3D() {
       name: "Yield Booster",
       cost: (() => {
         let calculatedCost = 12000;
-        const tempYieldBoosterLevel = yieldBoosterLevel; // Use actual store value
+        const tempYieldBoosterLevel = yieldBoosterLevelFromStore; // Use actual store value
         if (tempYieldBoosterLevel > 0) {
           calculatedCost = 12000 * Math.pow(1.4, tempYieldBoosterLevel);
         }
         return Math.floor(calculatedCost);
       })(),
-      description: `Boost all cows' Raw Nilk production by 10% per level (compounding). Current Lvl: ${yieldBoosterLevel}`,
+      description: `Boost all cows' Raw Nilk production by 10% per level (compounding). Current Lvl: ${yieldBoosterLevelFromStore}`,
       image: "/gallonjug.png",
       id: "yield_booster_legacy",
       category: 'boosters'
@@ -894,7 +866,7 @@ export default function NilkFarm3D() {
       console.log(`[UI Purchase Intent] Legacy upgrade: ${passedUpgrade.name}, Cost: ${cost} ${paymentCurrency}`);
       
       if (passedUpgrade.id === "yield_booster_legacy") {
-        actions.upgradeYieldBooster();
+        actions.purchaseYieldBooster();
       } else if (passedUpgrade.id === "moofi_badge_legacy") {
         actions.purchaseMoofiBadge();
       } else if (passedUpgrade.id.startsWith("buy_cow_")) {
@@ -1016,44 +988,6 @@ export default function NilkFarm3D() {
     if (rarity === COW_STATS.common.name) return "border-green-400/60";
     return "border-gray-400/60";
   };
-
-  const handleActivateFlask = async (flaskId: FlaskId) => {
-    setIsLoading(prev => ({ ...prev, [`activate_${flaskId}`]: true }));
-    try {
-        const success = await actions.activateFlask(flaskId);
-        if (success) {
-            // Optional: Show a success toast
-            console.log(`${flaskId} activated successfully!`);
-        } else {
-            handleError(new Error("Failed to activate flask. Another may be active or you may not have one."));
-        }
-    } catch (e: any) {
-        handleError(e);
-    } finally {
-        setIsLoading(prev => ({ ...prev, [`activate_${flaskId}`]: false }));
-    }
-  };
-
-  const farmBoundary = 30;
-  const cowList: CowListItem[] = useMemo(() => {
-    return ownedCows.map(cow => ({
-      id: cow.id,
-      name: cow.name,
-      image: cow.imageUrl || "/NILK COW.png",
-      rarity: cow.tier.charAt(0).toUpperCase() + cow.tier.slice(1),
-      level: cow.level,
-      tier: cow.tier,
-      rawNilkPerDay: cow.currentRawNilkPerDay,
-      lastHarvestTime: cow.lastHarvestTime,
-      harvestCooldownHours: 6,
-      modelPath: cow.tier === "common" ? DEFAULT_COW_MODEL_PATH : cow.tier === "cosmic" ? "/MODELS/cosmic cow.glb" : "/MODELS/galactic moo moo.glb",
-      threeD: {
-        position: [0, 0, 0],
-        rotation: [0, 0, 0],
-        scale: COW_SCALE_MULTIPLIER
-      }
-    }));
-  }, [ownedCows]);
 
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-black via-green-900 to-black text-white overflow-hidden">
@@ -1498,115 +1432,12 @@ export default function NilkFarm3D() {
                   )}
                 </div>
 
-                {/* Flask Crafting */}
-                {hasFlaskBlueprint && (
-                  <div className="mb-4">
-                    <div className="bg-gradient-to-r from-cyan-900/50 to-teal-800/50 rounded-lg p-3 border border-cyan-400/40">
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="font-bold text-cyan-400 text-sm flex items-center">
-                          <div className="w-4 h-4 relative mr-2">
-                            <Image 
-                              src="/smalljar.png" 
-                              alt="Flask Crafting" 
-                              fill 
-                              className="object-contain"
-                            />
-                          </div>
-                          Flask Crafting
-                        </span>
-                        {activeFlask && (
-                          <div className="text-cyan-400 text-xs bg-cyan-400/20 px-2 py-1 rounded flex items-center">
-                            <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse mr-1"></div>
-                            Active
-                          </div>
-                        )}
-                      </div>
-                      
-                      {/* Active Flask Display */}
-                      {activeFlask && (
-                        <div className="mb-3 p-2 bg-cyan-400/10 rounded border border-cyan-400/20">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs font-semibold text-cyan-300">{activeFlask.name}</span>
-                            <ConsumableTimer expiryTime={activeFlask.expiryTime} />
-                          </div>
-                          <p className="text-xs text-cyan-400">{activeFlask.effectDescription}</p>
-                        </div>
-                      )}
-                      
-                      {/* Flask Options */}
-                      <div className="space-y-2">
-                        {Object.entries(FLASK_STATS).map(([flaskId, flask]) => {
-                          const canAfford = userRawNilkBalance >= flask.costRawNilk && userNilkBalance >= flask.costNilk;
-                          const isActive = activeFlask?.id === flaskId;
-                          
-                          return (
-                            <div 
-                              key={flaskId}
-                              className={`p-2 rounded border transition-all duration-200 ${
-                                isActive 
-                                  ? 'bg-cyan-400/20 border-cyan-400/40' 
-                                  : canAfford 
-                                    ? 'bg-gray-800/30 border-gray-600/30 hover:border-cyan-400/30 cursor-pointer' 
-                                    : 'bg-gray-900/30 border-gray-700/30 opacity-50'
-                              }`}
-                              onClick={() => {
-                                if (canAfford && !isActive && !activeFlask) {
-                                  const success = craftFlask(flaskId as FlaskId);
-                                  if (success) {
-                                    playSound("/sounds/sparkles.mp3");
-                                  }
-                                }
-                              }}
-                            >
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center space-x-2">
-                                  <div className="w-6 h-6 relative">
-                                    <Image 
-                                      src={flask.image} 
-                                      alt={flask.name} 
-                                      fill 
-                                      className="object-contain"
-                                    />
-                                  </div>
-                                  <div>
-                                    <p className="text-xs font-semibold text-white">{flask.name}</p>
-                                    <p className="text-xs text-gray-400">{flask.effectDescription}</p>
-                                  </div>
-                                </div>
-                                <div className="text-right">
-                                  <div className="text-xs text-blue-400">{formatNumber(flask.costRawNilk)} Raw</div>
-                                  <div className="text-xs text-yellow-400">{formatNumber(flask.costNilk)} $NILK</div>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      
-                      {!hasFlaskBlueprint && (
-                        <div className="text-center p-2">
-                          <p className="text-xs text-gray-400 mb-2">Flask Blueprint Required</p>
-                          <Button
-                            onClick={() => {
-                              setIsMarketModalOpen(true);
-                              playSound("/sounds/sparkles.mp3");
-                            }}
-                            className="w-full bg-gradient-to-r from-cyan-500 to-teal-500 hover:from-cyan-600 hover:to-teal-600 text-black text-xs py-1.5 font-semibold rounded-lg"
-                          >
-                            Get Blueprint
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
                 {/* Boost Status */}
                 <div className="space-y-2">
                   <div className="bg-gray-800/50 rounded-lg p-2 border border-gray-600/30">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-white">Yield Booster</span>
-                      <span className="text-lime-400 font-bold text-xs">Lvl {yieldBoosterLevel}</span>
+                      <span className="text-lime-400 font-bold text-xs">Lvl {yieldBoosterLevelFromStore}</span>
                     </div>
                   </div>
                   
