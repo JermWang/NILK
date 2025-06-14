@@ -1484,8 +1484,8 @@ export default function NilkFarm3D() {
           </div>
 
           {/* Connected Bottom: Cow Herd Inventory */}
-          <div className="mt-4">
-            <div className="bg-black/70 backdrop-blur-md rounded-2xl p-4 border-2 border-lime-400/40 shadow-2xl h-48">
+          <div className="mt-2">
+            <div className="bg-black/70 backdrop-blur-md rounded-2xl p-4 border-2 border-lime-400/40 shadow-2xl min-h-48">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-lg font-bold text-lime-400 flex items-center">
                   <div className="w-6 h-6 relative mr-2">
@@ -1509,7 +1509,7 @@ export default function NilkFarm3D() {
               </div>
               
               {displayCowList.length === 0 ? (
-                <div className="flex items-center justify-center" style={{ height: 'calc(100% - 3rem)' }}>
+                <div className="flex items-center justify-center h-32">
                   <div className="text-center">
                     <div className="text-gray-400 mb-3">
                       <div className="w-12 h-12 relative mx-auto mb-2">
@@ -1535,13 +1535,13 @@ export default function NilkFarm3D() {
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-8 gap-3 max-h-24 overflow-y-auto pr-2">
+                <div className="grid grid-cols-8 gap-4 max-h-32 overflow-y-auto pr-2 py-1">
                   {displayCowList.map((cow) => {
                     const harvestStatus = getHarvestStatus(cow);
                     return (
                       <div 
                         key={cow.id} 
-                        className={`relative bg-gradient-to-br ${getRarityGradient(cow.rarity)} rounded-lg p-2 border-2 ${getRarityBorder(cow.rarity)} shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 cursor-pointer group ${harvestStatus.canHarvest ? 'animate-pulse' : ''}`}
+                        className={`relative bg-gradient-to-br ${getRarityGradient(cow.rarity)} rounded-xl p-2 border ${getRarityBorder(cow.rarity)} shadow-md hover:shadow-lg transition-all duration-300 cursor-pointer group ${harvestStatus.canHarvest ? 'hover:scale-[1.02] hover:shadow-lime-400/20' : 'hover:scale-[1.01] hover:shadow-white/10'}`}
                         onClick={(e) => {
                           if (harvestStatus.canHarvest) {
                             handleHarvest(cow.id, e.currentTarget);
@@ -1551,7 +1551,7 @@ export default function NilkFarm3D() {
                       >
                         {/* Cow Avatar */}
                         <div className="relative mb-1">
-                          <div className="w-10 h-10 bg-gray-800/50 rounded-full flex items-center justify-center border-2 border-gray-600 group-hover:border-lime-400 transition-colors overflow-hidden">
+                          <div className="w-10 h-10 bg-gray-800/30 rounded-full flex items-center justify-center border border-gray-500/50 group-hover:border-lime-400/80 transition-all duration-300 overflow-hidden backdrop-blur-sm">
                             <div className="w-8 h-8 relative">
                               <Image 
                                 src={cow.rarity === 'Galactic' ? '/galactic moo moo.png' : 
@@ -1581,6 +1581,29 @@ export default function NilkFarm3D() {
                       </div>
                     );
                   })}
+                  
+                  {/* Buy More Cows Card */}
+                  <div 
+                    className="relative bg-gradient-to-br from-gray-800/60 to-gray-900/60 rounded-xl p-2 border border-dashed border-lime-400/50 shadow-md hover:shadow-lg hover:shadow-lime-500/20 transition-all duration-300 cursor-pointer group hover:scale-[1.02] hover:border-lime-400/80 backdrop-blur-sm"
+                    onClick={() => {
+                      setIsMarketModalOpen(true);
+                      playSound("/sounds/sparkles.mp3");
+                    }}
+                  >
+                    {/* Plus Icon Avatar */}
+                    <div className="relative mb-1">
+                      <div className="w-10 h-10 bg-lime-900/20 rounded-full flex items-center justify-center border border-lime-400/50 group-hover:border-lime-400/80 group-hover:bg-lime-800/30 transition-all duration-300 backdrop-blur-sm">
+                        <Plus className="w-5 h-5 text-lime-400" />
+                      </div>
+                    </div>
+                    
+                    {/* Buy Info */}
+                    <div className="text-center">
+                      <p className="text-xs font-bold text-lime-400">Buy More</p>
+                      <p className="text-xs text-lime-300 font-semibold">Cows</p>
+                      <div className="text-xs text-gray-400">Expand!</div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
