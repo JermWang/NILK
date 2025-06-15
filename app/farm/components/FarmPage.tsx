@@ -2,30 +2,19 @@
 
 import React, { useState, useRef, useEffect, Suspense, useMemo } from "react"
 import Link from "next/link"
-import { usePathname } from 'next/navigation'
 import { Canvas, useFrame, RootState } from "@react-three/fiber"
-import { OrbitControls, Environment, Text, useGLTF, useTexture, Stars } from "@react-three/drei"
-import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { useAccount, useBalance } from 'wagmi'
+import { OrbitControls, Environment, useGLTF, useTexture, Stars } from "@react-three/drei"
 import { Button } from "@/components/ui/button"
-import { supabase } from '@/lib/supabaseClient';
+import { useAccount } from 'wagmi'
 import {
-  ChevronLeft,
-  ChevronRight,
-  ChevronUp,
-  ChevronDown,
   Zap,
   Sparkles,
   Gift,
-  Plus,
   Star,
-  Cog,
   Tractor,
   Factory,
   XCircle,
   Loader2,
-  Atom,
   CheckCircle2,
   Combine,
   Home,
@@ -38,14 +27,12 @@ import * as THREE from "three"
 import { RepeatWrapping } from "three"
 import useGameStore, { useGameActions, COW_STATS, FLASK_STATS, ActiveFlask, FlaskId } from "../store/useGameStore"
 import { useErrorHandler, validators, antiCheat } from "../utils/errorHandling"
-import { shallow } from 'zustand/shallow';
 
 import type { GameActions, Cow as StoreCow, CowTier } from "../store/useGameStore"
 import Image from 'next/image'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { initialMarketItems, type UpgradeItem } from "@/app/config/marketItems"
-import Marketplace from "./components/Marketplace"
-import FlaskManager from "./components/FlaskManager"
+import Marketplace from "./Marketplace"
+import FlaskManager from "./FlaskManager"
 
 // GLTF Model paths - These become fallbacks or defaults if not specified by tier
 const DEFAULT_COW_MODEL_PATH = "/MODELS/COW_optimized.glb";

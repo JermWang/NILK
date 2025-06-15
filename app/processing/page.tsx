@@ -2,13 +2,13 @@
 
 import React, { useState, useEffect, useMemo, useRef } from "react"
 import Link from "next/link"
-import { usePathname } from 'next/navigation'
-import { ConnectButton } from "@rainbow-me/rainbowkit"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ChevronLeft, Factory, Package, Coins, Zap, Tractor, Loader2, ShoppingCart, XCircle, CheckCircle2, Gift, Check, Info, Combine } from "lucide-react"
+import { ChevronLeft, Factory, Package, Coins, Zap, Loader2, ShoppingCart, XCircle, CheckCircle2, Gift, Check } from "lucide-react"
 import useGameStore, { useGameActions, MachineType, MACHINES, MANUAL_PROCESSING_STATS, Machine } from "../store/useGameStore"
 import type { GameActions } from "../store/useGameStore"
+import { Canvas, useFrame } from '@react-three/fiber'
+import * as THREE from 'three'
 
 // Sound effect utility
 const playSound = (soundFile: string) => {
@@ -32,8 +32,113 @@ interface SuccessPopupState {
   message?: string;
 }
 
+const FarmCenteredScene = () => {
+  const farmRef = useRef<THREE.Group>(null);
+  const leavesRef = useRef<THREE.Group>(null);
+  const cowRef = useRef<THREE.Group>(null);
+  const machineRef = useRef<THREE.Group>(null);
+  const smokeRef = useRef<THREE.Group>(null);
+
+  // Create animated leaves
+  useFrame(({ clock }) => {
+    const t = clock.getElapsedTime();
+    
+    if (leavesRef.current) {
+      leavesRef.current.children.forEach((leaf, i) => {
+        leaf.position.y = Math.sin(t * 0.5 + i) * 0.3;
+        leaf.rotation.z = Math.cos(t * 0.3 + i) * 0.2;
+      });
+    }
+
+    if (cowRef.current) {
+      cowRef.current.rotation.y = Math.sin(t * 0.5) * 0.1;
+    }
+
+    if (machineRef.current) {
+      machineRef.current.rotation.y += 0.01;
+    }
+
+    if (smokeRef.current) {
+      smokeRef.current.children.forEach((smoke, i) => {
+        smoke.position.y += 0.02;
+        smoke.scale.setScalar(smoke.scale.x * 1.01);
+        
+        if (smoke.position.y > 3) {
+          smoke.position.y = 0;
+          smoke.scale.setScalar(0.1);
+        }
+      });
+    }
+  });
+
+  return (
+    <group ref={farmRef} position={[0, -1, 0]}>
+      {/* Ground */}
+      <mesh position={[0, -0.5, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[10, 10]} />
+        <meshLambertMaterial color="#4ade80" />
+      </mesh>
+
+      {/* Trees */}
+      <group ref={leavesRef}>
+        {[...Array(3)].map((_, i) => (
+          <group key={i} position={[i * 3 - 3, 0, -2]}>
+            {/* Tree trunk */}
+            <mesh position={[0, 0.5, 0]}>
+              <cylinderGeometry args={[0.1, 0.1, 1]} />
+              <meshLambertMaterial color="#8b4513" />
+            </mesh>
+            {/* Tree leaves */}
+            <mesh position={[0, 1.5, 0]}>
+              <sphereGeometry args={[0.8]} />
+              <meshLambertMaterial color="#22c55e" />
+            </mesh>
+          </group>
+        ))}
+      </group>
+
+      {/* Cow */}
+      <group ref={cowRef} position={[-1, 0, 1]}>
+        <mesh position={[0, 0.5, 0]}>
+          <boxGeometry args={[1, 0.5, 0.3]} />
+          <meshLambertMaterial color="#f8f8f8" />
+        </mesh>
+        <mesh position={[0.3, 0.8, 0]}>
+          <sphereGeometry args={[0.3]} />
+          <meshLambertMaterial color="#f8f8f8" />
+        </mesh>
+      </group>
+
+      {/* Processing Machine */}
+      <group ref={machineRef} position={[2, 0, 0]}>
+        <mesh position={[0, 0.5, 0]}>
+          <boxGeometry args={[1, 1, 1]} />
+          <meshLambertMaterial color="#64748b" />
+        </mesh>
+        <mesh position={[0, 1.2, 0]}>
+          <cylinderGeometry args={[0.2, 0.2, 0.4]} />
+          <meshLambertMaterial color="#374151" />
+        </mesh>
+      </group>
+
+      {/* Smoke particles */}
+      <group ref={smokeRef}>
+        {[...Array(5)].map((_, i) => (
+          <mesh key={i} position={[2, 1.5 + i * 0.3, 0]}>
+            <sphereGeometry args={[0.1]} />
+            <meshLambertMaterial color="#9ca3af" transparent opacity={0.5} />
+          </mesh>
+        ))}
+      </group>
+
+      {/* Ambient lighting */}
+      <ambientLight intensity={0.6} />
+      <directionalLight position={[5, 5, 5]} intensity={0.8} />
+    </group>
+  );
+};
+
 export default function ProcessingPage() {
-  const pathname = usePathname()
   const userNilkBalance = useGameStore((state) => state.userNilkBalance)
   const userRawNilkBalance = useGameStore((state) => state.userRawNilkBalance)
   const ownedMachines = useGameStore((state) => state.ownedMachines)

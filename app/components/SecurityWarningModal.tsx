@@ -80,7 +80,7 @@ export default function SecurityWarningModal({
             </div>
             <div className="flex items-start gap-3">
               <CheckCircle className="h-4 w-4 text-green-400 mt-0.5 flex-shrink-0" />
-              <span>Only transfer what you're willing to risk</span>
+              <span>Only transfer what you&apos;re willing to risk</span>
             </div>
             <div className="flex items-start gap-3">
               <CheckCircle className="h-4 w-4 text-green-400 mt-0.5 flex-shrink-0" />
@@ -110,7 +110,7 @@ export default function SecurityWarningModal({
               className="rounded border-slate-600 bg-slate-700 text-orange-500 focus:ring-orange-500"
             />
             <label htmlFor="dontShow" className="text-sm text-slate-400 cursor-pointer">
-              Don't show this warning again
+              Don&apos;t show this warning again
             </label>
           </div>
         </div>

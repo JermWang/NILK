@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchInitialGameState, saveGameStateToSupabase, createOrUpdateUserProfile } from '@/app/store/supabase-sync';
+import { saveGameStateToSupabase } from '@/app/store/supabase-sync';
 import { supabase } from '@/lib/supabaseClient';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     console.log('[Test API] Starting database sync test');
     
     // Create a test user ID (string format for current Supabase types)
-    const testWalletAddress = '0x1234567890123456789012345678901234567890';
     const testUserId = '1234567890123456789'; // String format for compatibility
     
     console.log('[Test API] Creating test user:', testUserId);

@@ -31,15 +31,6 @@ export default function WalletConnection() {
     return true;
   };
 
-  const handleConnectClick = () => {
-    if (checkSecurityWarning()) {
-      // User has already dismissed warning, proceed normally
-      return;
-    }
-    // Warning will be shown, set pending connection
-    setPendingConnection(true);
-  };
-
   const handleSecurityProceed = () => {
     setPendingConnection(false);
     // Trigger the connect modal after security approval
